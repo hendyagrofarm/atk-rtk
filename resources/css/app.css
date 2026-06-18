@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sidebar scrollbar */
+.sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
+    border-radius: 9999px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.75);
+}
+
+/* Global thin scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 transparent;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Topbar Text
+|--------------------------------------------------------------------------
+| Hanya paksa warna judul/subjudul di topbar.
+| Jangan paksa warna button/link, supaya tombol putih tetap terlihat teksnya.
+|--------------------------------------------------------------------------
+*/
+.app-topbar h1,
+.app-topbar h2,
+.app-topbar h3 {
+    color: rgba(255, 255, 255, 0.96) !important;
+}
+
+.app-topbar p {
+    color: rgba(255, 255, 255, 0.78) !important;
+}
+
+/* Jangan override warna button/link di topbar */
+.app-topbar a,
+.app-topbar button {
+    color: inherit;
+}
+
+/* Form elements di topbar tetap terbaca */
+.app-topbar input,
+.app-topbar select,
+.app-topbar textarea {
+    color: #24313f;
+}
