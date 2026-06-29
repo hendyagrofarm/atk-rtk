@@ -2,16 +2,19 @@
     <x-slot name="header">
         <div class="flex items-center justify-between gap-3">
             <div>
-                <h1 class="text-sm font-semibold leading-5 text-slate-800">
+                <h1 class="text-sm font-semibold leading-5 text-white">
                     Detail Approval Pengajuan
                 </h1>
-                <p class="text-[10px] leading-4 text-slate-500">
+                <p class="text-[10px] leading-4 text-white/80">
                     Periksa stok entitas dan tentukan jumlah barang yang disetujui.
                 </p>
             </div>
 
             <a href="{{ route('approvals.index') }}"
-               class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+               class="inline-flex items-center gap-1.5 rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-white/20">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+                </svg>
                 Kembali
             </a>
         </div>
@@ -76,7 +79,9 @@
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                         <p class="text-[10px] font-medium text-slate-500">Nomor Pengajuan</p>
-                        <p class="mt-0.5 text-xs font-semibold text-slate-800">{{ $approval->request_number }}</p>
+                        <p class="mt-0.5 text-xs font-semibold text-slate-800">
+                            {{ $approval->request_number }}
+                        </p>
                     </div>
 
                     <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
@@ -146,7 +151,6 @@
             @if ($approval->status === 'pending')
                 <form method="POST" action="{{ route('approvals.approve', $approval) }}">
                     @csrf
-                    @method('PATCH')
 
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200">
@@ -170,7 +174,9 @@
                                     @endphp
 
                                     <tr class="hover:bg-slate-50">
-                                        <td class="px-4 py-2.5 text-[11px] text-slate-600">{{ $loop->iteration }}</td>
+                                        <td class="px-4 py-2.5 text-[11px] text-slate-600">
+                                            {{ $loop->iteration }}
+                                        </td>
 
                                         <td class="px-4 py-2.5">
                                             <p class="text-xs font-semibold text-slate-800">
@@ -198,7 +204,7 @@
                                                 min="0"
                                                 max="{{ $detail->quantity }}"
                                                 value="{{ old('approved_quantity.' . $detail->id, $maxApprove) }}"
-                                                class="w-24 rounded-md border-slate-300 px-3 py-1.5 text-right text-xs shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                class="w-24 rounded-md border-slate-300 px-3 py-1.5 text-right text-xs shadow-sm focus:border-[#3B8DBD] focus:ring-[#3B8DBD]"
                                             >
                                             <p class="mt-1 text-[10px] text-slate-400">
                                                 Maks: {{ $detail->quantity }}
@@ -223,7 +229,7 @@
                             name="approver_note"
                             id="approver_note"
                             rows="3"
-                            class="block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-[#3B8DBD] focus:ring-[#3B8DBD]"
                             placeholder="Catatan persetujuan jika ada"
                         >{{ old('approver_note') }}</textarea>
                     </div>
@@ -236,23 +242,22 @@
                         >
                             Setujui Pengajuan
                         </button>
+                    </div>
                 </form>
 
-                        <form method="POST" action="{{ route('approvals.reject', $approval) }}">
-                            @csrf
-                            @method('PATCH')
+                <form method="POST" action="{{ route('approvals.reject', $approval) }}" class="border-t border-slate-200 bg-slate-50 px-4 pb-3 sm:flex sm:justify-end">
+                    @csrf
 
-                            <input type="hidden" name="approver_note" value="Pengajuan ditolak">
+                    <input type="hidden" name="approver_note" value="Pengajuan ditolak">
 
-                            <button
-                                type="submit"
-                                class="inline-flex w-full items-center justify-center rounded-md bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-red-700 sm:w-auto"
-                                onclick="return confirm('Yakin ingin menolak pengajuan ini?')"
-                            >
-                                Tolak Pengajuan
-                            </button>
-                        </form>
-                    </div>
+                    <button
+                        type="submit"
+                        class="inline-flex w-full items-center justify-center rounded-md bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-red-700 sm:w-auto"
+                        onclick="return confirm('Yakin ingin menolak pengajuan ini?')"
+                    >
+                        Tolak Pengajuan
+                    </button>
+                </form>
             @else
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-slate-200">
@@ -269,7 +274,9 @@
                         <tbody class="divide-y divide-slate-100 bg-white">
                             @foreach ($approval->details as $detail)
                                 <tr class="hover:bg-slate-50">
-                                    <td class="px-4 py-2.5 text-[11px] text-slate-600">{{ $loop->iteration }}</td>
+                                    <td class="px-4 py-2.5 text-[11px] text-slate-600">
+                                        {{ $loop->iteration }}
+                                    </td>
 
                                     <td class="px-4 py-2.5">
                                         <p class="text-xs font-semibold text-slate-800">
