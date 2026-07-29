@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Models\ItemStock;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
@@ -12,7 +13,13 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Events\AfterSheet;
 
-class StockReportExport implements FromCollection, WithHeadings, WithMapping, WithCustomStartCell, ShouldAutoSize, WithEvents
+class StockReportExport implements
+    FromCollection,
+    WithHeadings,
+    WithMapping,
+    WithCustomStartCell,
+    ShouldAutoSize,
+    WithEvents
 {
     protected Request $request;
 
@@ -23,38 +30,138 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
         $this->request = $request;
     }
 
+    /**
+     * Mengambil data stok sesuai hak akses user dan filter laporan.
+     */
     public function collection()
     {
-        $query = ItemStock::with(['entity', 'item.category'])
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
+        $entityId = $this->request->filled('entity_id')
+            && (
+                $isSuperAdmin
+                || $allowedEntityIds->contains(
+                    (int) $this->request->entity_id
+                )
+            )
+                ? (int) $this->request->entity_id
+                : null;
+
+        $warehouseId = $this->request->filled('warehouse_id')
+            && (
+                $isSuperAdmin
+                || $allowedWarehouseIds->contains(
+                    (int) $this->request->warehouse_id
+                )
+            )
+                ? (int) $this->request->warehouse_id
+                : null;
+
+        $categoryId = $this->request->input('category_id');
+        $stockStatus = $this->request->input('stock_status');
+        $search = trim((string) $this->request->input('search'));
+
+        return ItemStock::query()
+            ->with([
+                'entity',
+                'warehouse',
+                'item.category',
+            ])
             ->whereHas('item')
             ->whereHas('entity')
-            ->join('entities', 'item_stocks.entity_id', '=', 'entities.id')
-            ->join('items', 'item_stocks.item_id', '=', 'items.id')
+            ->whereHas('warehouse')
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('item_stocks.entity_id', $allowedEntityIds)
+                    ->whereIn('item_stocks.warehouse_id', $allowedWarehouseIds)
+            )
+            ->when(
+                $entityId,
+                fn ($query) => $query
+                    ->where('item_stocks.entity_id', $entityId)
+            )
+            ->when(
+                $warehouseId,
+                fn ($query) => $query
+                    ->where('item_stocks.warehouse_id', $warehouseId)
+            )
+            ->when(
+                filled($categoryId),
+                fn ($query) => $query
+                    ->whereHas(
+                        'item',
+                        fn ($itemQuery) => $itemQuery
+                            ->where('category_id', $categoryId)
+                    )
+            )
+            ->when(
+                $search !== '',
+                fn ($query) => $query
+                    ->whereHas(
+                        'item',
+                        function ($itemQuery) use ($search) {
+                            $itemQuery->where(function ($subQuery) use ($search) {
+                                $subQuery
+                                    ->where(
+                                        'code',
+                                        'like',
+                                        '%' . $search . '%'
+                                    )
+                                    ->orWhere(
+                                        'name',
+                                        'like',
+                                        '%' . $search . '%'
+                                    );
+                            });
+                        }
+                    )
+            )
+            ->when(
+                $stockStatus === 'low',
+                fn ($query) => $query
+                    ->whereColumn(
+                        'item_stocks.current_stock',
+                        '<=',
+                        'item_stocks.minimum_stock'
+                    )
+            )
+            ->when(
+                $stockStatus === 'safe',
+                fn ($query) => $query
+                    ->whereColumn(
+                        'item_stocks.current_stock',
+                        '>',
+                        'item_stocks.minimum_stock'
+                    )
+            )
+            ->join(
+                'entities',
+                'item_stocks.entity_id',
+                '=',
+                'entities.id'
+            )
+            ->join(
+                'warehouses',
+                'item_stocks.warehouse_id',
+                '=',
+                'warehouses.id'
+            )
+            ->join(
+                'items',
+                'item_stocks.item_id',
+                '=',
+                'items.id'
+            )
             ->select('item_stocks.*')
             ->orderBy('entities.code')
-            ->orderBy('items.name');
-
-        if ($this->request->filled('entity_id')) {
-            $query->where('item_stocks.entity_id', $this->request->entity_id);
-        }
-
-        if ($this->request->filled('category_id')) {
-            $query->whereHas('item', function ($itemQuery) {
-                $itemQuery->where('category_id', $this->request->category_id);
-            });
-        }
-
-        if ($this->request->filled('stock_status')) {
-            if ($this->request->stock_status === 'low') {
-                $query->whereColumn('item_stocks.current_stock', '<=', 'item_stocks.minimum_stock');
-            }
-
-            if ($this->request->stock_status === 'safe') {
-                $query->whereColumn('item_stocks.current_stock', '>', 'item_stocks.minimum_stock');
-            }
-        }
-
-        return $query->get();
+            ->orderBy('warehouses.name')
+            ->orderBy('items.name')
+            ->get();
     }
 
     public function startCell(): string
@@ -67,6 +174,8 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
         return [
             'No',
             'Entitas',
+            'Gudang',
+            'Kode Gudang',
             'Kode Barang',
             'Nama Barang',
             'Jenis',
@@ -87,15 +196,19 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
 
         return [
             $this->rowNumber,
-            $stock->entity->code ?? '-',
-            $stock->item->code ?? '-',
-            $stock->item->name ?? '-',
-            $stock->item->type ?? '-',
-            $stock->item->category->name ?? '-',
-            $stock->item->unit ?? '-',
+            $stock->entity?->code ?? '-',
+            $stock->warehouse?->name ?? '-',
+            $stock->warehouse?->code ?? '-',
+            $stock->item?->code ?? '-',
+            $stock->item?->name ?? '-',
+            $stock->item?->type ?? '-',
+            $stock->item?->category?->name ?? '-',
+            $stock->item?->unit ?? '-',
             $currentStock,
             $minimumStock,
-            $currentStock <= $minimumStock ? 'Stok Menipis' : 'Aman',
+            $currentStock <= $minimumStock
+                ? 'Stok Menipis'
+                : 'Aman',
         ];
     }
 
@@ -104,19 +217,25 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
         return [
             AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
-
                 $highestRow = $sheet->getHighestRow();
 
                 /*
                 |--------------------------------------------------------------------------
-                | Judul Laporan
+                | Judul laporan
                 |--------------------------------------------------------------------------
                 */
-                $sheet->mergeCells('A1:J1');
-                $sheet->mergeCells('A2:J2');
+                $sheet->mergeCells('A1:L1');
+                $sheet->mergeCells('A2:L2');
 
-                $sheet->setCellValue('A1', 'LAPORAN STOK BARANG');
-                $sheet->setCellValue('A2', 'Tanggal Export: ' . now()->format('d-m-Y H:i'));
+                $sheet->setCellValue(
+                    'A1',
+                    'LAPORAN STOK BARANG PER ENTITAS DAN GUDANG'
+                );
+
+                $sheet->setCellValue(
+                    'A2',
+                    'Tanggal Export: ' . now()->format('d-m-Y H:i')
+                );
 
                 $sheet->getStyle('A1')->applyFromArray([
                     'font' => [
@@ -142,11 +261,11 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
 
                 /*
                 |--------------------------------------------------------------------------
-                | Header Tabel
+                | Header tabel
                 |--------------------------------------------------------------------------
                 */
-                $headerRange = 'A4:J4';
-                $tableRange = 'A4:J' . $highestRow;
+                $headerRange = 'A4:L4';
+                $tableRange = 'A4:L' . $highestRow;
 
                 $sheet->getStyle($headerRange)->applyFromArray([
                     'font' => [
@@ -198,7 +317,7 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
 
                 /*
                 |--------------------------------------------------------------------------
-                | Alignment isi tabel
+                | Alignment dan format angka
                 |--------------------------------------------------------------------------
                 */
                 if ($highestRow >= 5) {
@@ -206,11 +325,7 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
                         ->getAlignment()
                         ->setHorizontal('center');
 
-                    $sheet->getStyle('B5:B' . $highestRow)
-                        ->getAlignment()
-                        ->setHorizontal('center');
-
-                    $sheet->getStyle('E5:E' . $highestRow)
+                    $sheet->getStyle('B5:D' . $highestRow)
                         ->getAlignment()
                         ->setHorizontal('center');
 
@@ -218,15 +333,19 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
                         ->getAlignment()
                         ->setHorizontal('center');
 
-                    $sheet->getStyle('H5:I' . $highestRow)
-                        ->getAlignment()
-                        ->setHorizontal('right');
-
-                    $sheet->getStyle('J5:J' . $highestRow)
+                    $sheet->getStyle('I5:I' . $highestRow)
                         ->getAlignment()
                         ->setHorizontal('center');
 
-                    $sheet->getStyle('H5:I' . $highestRow)
+                    $sheet->getStyle('J5:K' . $highestRow)
+                        ->getAlignment()
+                        ->setHorizontal('right');
+
+                    $sheet->getStyle('L5:L' . $highestRow)
+                        ->getAlignment()
+                        ->setHorizontal('center');
+
+                    $sheet->getStyle('J5:K' . $highestRow)
                         ->getNumberFormat()
                         ->setFormatCode('#,##0');
                 }
@@ -237,10 +356,12 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
                 |--------------------------------------------------------------------------
                 */
                 for ($row = 5; $row <= $highestRow; $row++) {
-                    $status = $sheet->getCell('J' . $row)->getValue();
+                    $status = $sheet
+                        ->getCell('L' . $row)
+                        ->getValue();
 
                     if ($status === 'Stok Menipis') {
-                        $sheet->getStyle('J' . $row)->applyFromArray([
+                        $sheet->getStyle('L' . $row)->applyFromArray([
                             'font' => [
                                 'bold' => true,
                                 'color' => ['rgb' => 'B91C1C'],
@@ -253,7 +374,7 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
                     }
 
                     if ($status === 'Aman') {
-                        $sheet->getStyle('J' . $row)->applyFromArray([
+                        $sheet->getStyle('L' . $row)->applyFromArray([
                             'font' => [
                                 'bold' => true,
                                 'color' => ['rgb' => '047857'],
@@ -273,14 +394,16 @@ class StockReportExport implements FromCollection, WithHeadings, WithMapping, Wi
                 */
                 $sheet->getColumnDimension('A')->setWidth(6);
                 $sheet->getColumnDimension('B')->setWidth(12);
-                $sheet->getColumnDimension('C')->setWidth(18);
-                $sheet->getColumnDimension('D')->setWidth(28);
-                $sheet->getColumnDimension('E')->setWidth(12);
-                $sheet->getColumnDimension('F')->setWidth(18);
+                $sheet->getColumnDimension('C')->setWidth(24);
+                $sheet->getColumnDimension('D')->setWidth(16);
+                $sheet->getColumnDimension('E')->setWidth(18);
+                $sheet->getColumnDimension('F')->setWidth(28);
                 $sheet->getColumnDimension('G')->setWidth(12);
-                $sheet->getColumnDimension('H')->setWidth(16);
-                $sheet->getColumnDimension('I')->setWidth(16);
-                $sheet->getColumnDimension('J')->setWidth(18);
+                $sheet->getColumnDimension('H')->setWidth(20);
+                $sheet->getColumnDimension('I')->setWidth(12);
+                $sheet->getColumnDimension('J')->setWidth(16);
+                $sheet->getColumnDimension('K')->setWidth(16);
+                $sheet->getColumnDimension('L')->setWidth(18);
 
                 /*
                 |--------------------------------------------------------------------------

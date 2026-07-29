@@ -1,185 +1,229 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center justify-between gap-3">
             <div>
-                <h2 class="text-lg font-bold text-slate-800">
-                    Edit User
-                </h2>
-                <p class="mt-1 text-xs text-slate-500">
-                    Ubah data user, role, status, atau password.
+                <h1 class="text-sm font-semibold text-white">Edit User</h1>
+                <p class="text-[10px] text-white/80">
+                    Perbarui role, lokasi default, dan seluruh lokasi yang boleh diakses.
                 </p>
             </div>
 
             <a href="{{ route('users.index') }}"
-               class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-                </svg>
+               class="rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/20">
                 Kembali
             </a>
         </div>
     </x-slot>
 
-    <div class="py-6">
-        <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-            @if (session('error'))
-                <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {{ session('error') }}
-                </div>
-            @endif
+    <div class="space-y-3">
+        @if (session('error'))
+            <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+                {{ session('error') }}
+            </div>
+        @endif
 
-            <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                <form method="POST" action="{{ route('users.update', $user) }}" class="space-y-5">
-                    @csrf
-                    @method('PUT')
+        @if ($errors->any())
+            <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                <p class="text-[11px] font-semibold text-red-800">Data belum lengkap:</p>
+                <ul class="mt-1 list-inside list-disc text-[10px] text-red-700">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
 
+        <form method="POST" action="{{ route('users.update', $user) }}"
+              class="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+            @csrf
+            @method('PUT')
+
+            <div class="space-y-5 p-4">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                        <label for="name" class="mb-1 block text-sm font-semibold text-slate-700">
-                            Nama User <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            id="name"
-                            name="name"
-                            type="text"
-                            value="{{ old('name', $user->name) }}"
-                            class="w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                        >
-                        @error('name')
-                            <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-                        @enderror
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Nama User *</label>
+                        <input name="name" value="{{ old('name', $user->name) }}" required
+                               class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs"
+                               placeholder="Contoh: Admin Pabrik">
                     </div>
 
                     <div>
-                        <label for="email" class="mb-1 block text-sm font-semibold text-slate-700">
-                            Email <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            id="email"
-                            name="email"
-                            type="email"
-                            value="{{ old('email', $user->email) }}"
-                            class="w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                        >
-                        @error('email')
-                            <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-                        @enderror
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Email *</label>
+                        <input type="email" name="email" value="{{ old('email', $user->email) }}" required
+                               class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs"
+                               placeholder="contoh@agrofarm.id">
                     </div>
 
-                    <div>
-                        <label for="role" class="mb-1 block text-sm font-semibold text-slate-700">
-                            Role <span class="text-red-500">*</span>
-                        </label>
-                        <select
-                            id="role"
-                            name="role"
-                            class="w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            @disabled($user->id === auth()->id())
-                        >
+                    <div class="md:col-span-2">
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Role *</label>
+                        <select name="role" id="role" required
+                                class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs">
+                            <option value="">-- Pilih Role --</option>
                             @foreach ($roles as $role)
                                 <option value="{{ $role }}" @selected(old('role', $user->role) === $role)>
-                                    {{ ucfirst($role) }}
+                                    {{ match ($role) {
+                                        'super_admin' => 'Super Admin',
+                                        'admin' => 'Admin',
+                                        'approver' => 'Approver',
+                                        default => 'Staff',
+                                    } }}
                                 </option>
                             @endforeach
                         </select>
+                    </div>
+                </div>
 
-                        @if ($user->id === auth()->id())
-                            <input type="hidden" name="role" value="{{ $user->role }}">
-                            <p class="mt-1 text-xs text-slate-500">
-                                Role akun sendiri tidak bisa diubah agar admin tidak kehilangan akses.
-                            </p>
-                        @endif
-
-                        @error('role')
-                            <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-                        @enderror
+                <div id="location-access" class="space-y-4">
+                    <div class="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] text-sky-700">
+                        Centang semua entitas dan gudang yang boleh diakses. Setelah itu pilih satu lokasi default.
                     </div>
 
-                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                        <p class="text-sm font-semibold text-amber-800">
-                            Ubah Password
-                        </p>
-                        <p class="mt-1 text-xs text-amber-700">
-                            Kosongkan password jika tidak ingin mengganti password user.
-                        </p>
-
-                        <div class="mt-4 grid gap-5 md:grid-cols-2">
-                            <div>
-                                <label for="password" class="mb-1 block text-sm font-semibold text-slate-700">
-                                    Password Baru
-                                </label>
-                                <input
-                                    id="password"
-                                    name="password"
-                                    type="password"
-                                    class="w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                    placeholder="Kosongkan jika tidak diganti"
-                                >
-                                @error('password')
-                                    <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
-                                @enderror
+                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div class="rounded-md border border-slate-200 p-3">
+                            <div class="mb-2 flex items-center justify-between">
+                                <p class="text-[11px] font-bold text-slate-800">Akses Entitas *</p>
+                                <button type="button" onclick="toggleAll('entity-checkbox', true)"
+                                        class="text-[10px] font-semibold text-sky-600">Pilih Semua</button>
                             </div>
 
-                            <div>
-                                <label for="password_confirmation" class="mb-1 block text-sm font-semibold text-slate-700">
-                                    Konfirmasi Password Baru
-                                </label>
-                                <input
-                                    id="password_confirmation"
-                                    name="password_confirmation"
-                                    type="password"
-                                    class="w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                    placeholder="Ulangi password baru"
-                                >
+                            <div class="grid gap-2 sm:grid-cols-2">
+                                @foreach ($entities as $entity)
+                                    <label class="flex items-start gap-2 rounded-md border border-slate-200 px-3 py-2">
+                                        <input type="checkbox" name="entity_ids[]" value="{{ $entity->id }}"
+                                               class="entity-checkbox mt-0.5 rounded border-slate-300 text-emerald-600"
+                                               @checked(in_array((string) $entity->id, array_map('strval', old('entity_ids', $selectedEntityIds)), true))>
+                                        <span>
+                                            <span class="block text-[11px] font-bold text-slate-800">{{ $entity->code }}</span>
+                                            <span class="block text-[9px] text-slate-500">{{ $entity->name }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="rounded-md border border-slate-200 p-3">
+                            <div class="mb-2 flex items-center justify-between">
+                                <p class="text-[11px] font-bold text-slate-800">Akses Gudang *</p>
+                                <button type="button" onclick="toggleAll('warehouse-checkbox', true)"
+                                        class="text-[10px] font-semibold text-sky-600">Pilih Semua</button>
+                            </div>
+
+                            <div class="grid gap-2 sm:grid-cols-2">
+                                @foreach ($warehouses as $warehouse)
+                                    <label class="flex items-start gap-2 rounded-md border border-slate-200 px-3 py-2">
+                                        <input type="checkbox" name="warehouse_ids[]" value="{{ $warehouse->id }}"
+                                               class="warehouse-checkbox mt-0.5 rounded border-slate-300 text-emerald-600"
+                                               @checked(in_array((string) $warehouse->id, array_map('strval', old('warehouse_ids', $selectedWarehouseIds)), true))>
+                                        <span>
+                                            <span class="block text-[11px] font-bold text-slate-800">{{ $warehouse->name }}</span>
+                                            <span class="block text-[9px] text-slate-500">{{ $warehouse->code }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
                             </div>
                         </div>
                     </div>
 
-                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <label class="flex items-center gap-3">
-                            <input
-                                type="checkbox"
-                                name="is_active"
-                                value="1"
-                                class="rounded border-slate-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
-                                @checked(old('is_active', $user->is_active))
-                                @disabled($user->id === auth()->id())
-                            >
-                            <span>
-                                <span class="block text-sm font-semibold text-slate-700">
-                                    User aktif
-                                </span>
-                                <span class="block text-xs text-slate-500">
-                                    Jika dinonaktifkan, user tidak dapat login ke aplikasi.
-                                </span>
-                            </span>
-                        </label>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="mb-1 block text-[11px] font-semibold text-slate-700">Entitas Default *</label>
+                            <select name="entity_id" id="entity_id"
+                                    class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs">
+                                <option value="">-- Pilih Entitas Default --</option>
+                                @foreach ($entities as $entity)
+                                    <option value="{{ $entity->id }}" @selected((string) old('entity_id', $user->entity_id) === (string) $entity->id)>
+                                        {{ $entity->code }} - {{ $entity->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
 
-                        @if ($user->id === auth()->id())
-                            <input type="hidden" name="is_active" value="1">
-                            <p class="mt-2 text-xs text-slate-500">
-                                Akun sendiri tidak bisa dinonaktifkan.
-                            </p>
-                        @endif
+                        <div>
+                            <label class="mb-1 block text-[11px] font-semibold text-slate-700">Gudang Default *</label>
+                            <select name="warehouse_id" id="warehouse_id"
+                                    class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs">
+                                <option value="">-- Pilih Gudang Default --</option>
+                                @foreach ($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" @selected((string) old('warehouse_id', $user->warehouse_id) === (string) $warehouse->id)>
+                                        {{ $warehouse->code }} - {{ $warehouse->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="super-admin-info" class="hidden rounded-md border border-violet-200 bg-violet-50 px-3 py-3">
+                    <p class="text-[11px] font-bold text-violet-800">Super Admin memiliki akses penuh.</p>
+                    <p class="mt-1 text-[10px] text-violet-700">
+                        Entitas dan gudang tidak perlu dipilih karena otomatis dapat mengakses semua lokasi.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Password Baru</label>
+                        <input type="password" name="password" minlength="8"
+                               class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs">
                     </div>
 
-                    <div class="flex items-center justify-end gap-3 border-t border-slate-200 pt-5">
-                        <a href="{{ route('users.index') }}"
-                           class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                            Batal
-                        </a>
-
-                        <button
-                            type="submit"
-                            class="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
-                        >
-                            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75 10 18.25 19.5 6.75" />
-                            </svg>
-                            Update User
-                        </button>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Konfirmasi Password Baru</label>
+                        <input type="password" name="password_confirmation" minlength="8"
+                               class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs">
                     </div>
-                </form>
+                </div>
+
+                <label class="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+                    <input type="hidden" name="is_active" value="0">
+                    <input type="checkbox" name="is_active" value="1"
+                           class="mt-0.5 rounded border-slate-300 text-emerald-600"
+                           @checked(old('is_active', $user->is_active))>
+                    <span>
+                        <span class="block text-[11px] font-semibold text-slate-800">User Aktif</span>
+                        <span class="text-[10px] text-slate-500">User dapat login dan menggunakan aplikasi.</span>
+                    </span>
+                </label>
             </div>
-        </div>
+
+            <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+                <a href="{{ route('users.index') }}"
+                   class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700">
+                    Batal
+                </a>
+                <button class="rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700">
+                    Simpan Perubahan
+                </button>
+            </div>
+        </form>
     </div>
+
+    <script>
+        function toggleAll(className, checked) {
+            document.querySelectorAll('.' + className).forEach((checkbox) => {
+                checkbox.checked = checked;
+            });
+        }
+
+        function updateLocationFields() {
+            const isSuperAdmin = document.getElementById('role').value === 'super_admin';
+            const access = document.getElementById('location-access');
+            const info = document.getElementById('super-admin-info');
+            const entityDefault = document.getElementById('entity_id');
+            const warehouseDefault = document.getElementById('warehouse_id');
+
+            access.classList.toggle('hidden', isSuperAdmin);
+            info.classList.toggle('hidden', !isSuperAdmin);
+
+            entityDefault.disabled = isSuperAdmin;
+            warehouseDefault.disabled = isSuperAdmin;
+
+            document.querySelectorAll('.entity-checkbox, .warehouse-checkbox').forEach((input) => {
+                input.disabled = isSuperAdmin;
+            });
+        }
+
+        document.getElementById('role').addEventListener('change', updateLocationFields);
+        updateLocationFields();
+    </script>
 </x-app-layout>

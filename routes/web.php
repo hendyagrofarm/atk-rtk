@@ -2,12 +2,17 @@
 
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\EntityController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\Staff\RequestController as StaffRequestController;
 use App\Http\Controllers\StockInController;
+use App\Http\Controllers\StockAuditController;
+use App\Http\Controllers\StockTransferController;
+use App\Http\Controllers\StockTransferReportController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -35,6 +40,22 @@ Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
+
+/*
+|--------------------------------------------------------------------------
+| Master Entitas - Khusus Super Admin
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
+    Route::resource('entities', EntityController::class)
+        ->except(['show']);
+
+    Route::patch(
+        '/entities/{entity}/toggle-status',
+        [EntityController::class, 'toggleStatus']
+    )->name('entities.toggle-status');
+});
+
 /*
 |--------------------------------------------------------------------------
 | Route khusus Admin
@@ -42,9 +63,9 @@ Route::get('/dashboard', function () {
 */
 Route::get('/admin/dashboard', function () {
     return redirect()->route('dashboard');
-})->middleware(['auth', 'verified', 'role:admin'])->name('admin.dashboard');
+})->middleware(['auth', 'verified', 'role:super_admin,admin'])->name('admin.dashboard');
 
-Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
+Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->group(function () {
     /*
     |--------------------------------------------------------------------------
     | Manajemen User Admin
@@ -61,7 +82,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     | Master Data
     |--------------------------------------------------------------------------
     */
+    Route::resource('warehouses', WarehouseController::class)
+        ->except(['show']);
+
+    Route::patch(
+        '/warehouses/{warehouse}/toggle-status',
+        [WarehouseController::class, 'toggleStatus']
+        )->name('warehouses.toggle-status');
+
     Route::resource('categories', CategoryController::class);
+
     Route::resource('items', ItemController::class);
 
     /*
@@ -70,6 +100,23 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::resource('stock-ins', StockInController::class)
+        ->only(['index', 'create', 'store']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Mutasi Stok Antar Gudang
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('stock-transfers', StockTransferController::class)
+        ->only(['index', 'create', 'store']);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Audit dan Penyesuaian Stok
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('stock-audits', StockAuditController::class)
         ->only(['index', 'create', 'store']);
 
     /*
@@ -103,6 +150,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
 
     Route::get('/reports/stock-out/export-excel', [ReportController::class, 'exportStockOutExcel'])
         ->name('reports.stock-out.export-excel');
+
+    Route::get(
+        '/reports/stock-transfers',
+        [StockTransferReportController::class, 'index']
+    )->name('reports.stock-transfers');
+
+    Route::get(
+        '/reports/stock-transfers/export-excel',
+        [StockTransferReportController::class, 'exportExcel']
+    )->name('reports.stock-transfers.export-excel');
 });
 
 /*
@@ -118,16 +175,58 @@ Route::middleware(['auth', 'verified', 'role:staff'])
     ->prefix('staff')
     ->name('staff.')
     ->group(function () {
-        Route::get('/requests', [StaffRequestController::class, 'index'])
-            ->name('requests.index');
+        /*
+        |--------------------------------------------------------------------------
+        | Daftar Pengajuan
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            '/requests',
+            [StaffRequestController::class, 'index']
+        )->name('requests.index');
 
-        Route::get('/requests/create', [StaffRequestController::class, 'create'])
-            ->name('requests.create');
+        /*
+        |--------------------------------------------------------------------------
+        | Pengajuan dari Stok
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            '/requests/create',
+            [StaffRequestController::class, 'create']
+        )->name('requests.create');
 
-        Route::post('/requests', [StaffRequestController::class, 'store'])
-            ->name('requests.store');
+        Route::post(
+            '/requests',
+            [StaffRequestController::class, 'store']
+        )->name('requests.store');
 
-        Route::get('/requests/{id}', [StaffRequestController::class, 'show'])
+        /*
+        |--------------------------------------------------------------------------
+        | Pengajuan Baru / Custom
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            '/requests/custom/create',
+            [StaffRequestController::class, 'createCustom']
+        )->name('requests.custom.create');
+
+        Route::post(
+            '/requests/custom',
+            [StaffRequestController::class, 'storeCustom']
+        )->name('requests.custom.store');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Detail Pengajuan
+        |--------------------------------------------------------------------------
+        | Route ini wajib berada setelah route custom.
+        |--------------------------------------------------------------------------
+        */
+        Route::get(
+            '/requests/{id}',
+            [StaffRequestController::class, 'show']
+        )
+            ->whereNumber('id')
             ->name('requests.show');
     });
 
@@ -145,7 +244,7 @@ Route::get('/approver/dashboard', function () {
 | Route Approval Pengajuan
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified', 'role:admin,approver'])
+Route::middleware(['auth', 'verified', 'role:super_admin,admin,approver'])
     ->prefix('approvals')
     ->name('approvals.')
     ->group(function () {

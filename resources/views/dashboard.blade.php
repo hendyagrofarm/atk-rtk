@@ -11,119 +11,156 @@
     </x-slot>
 
     @php
-        $user = Auth::user();
-        $role = $user->role ?? '-';
+        $user = auth()->user();
+        $role = $user->role;
 
+    if ($role === 'super_admin') {
+        $quickMenus = [
+            [
+                'title' => 'Manajemen User',
+                'description' => 'Kelola akun dan hak akses pengguna.',
+                'route' => route('users.index'),
+                'color' => 'bg-[#08B05A]',
+            ],
+            [
+                'title' => 'Master Gudang',
+                'description' => 'Kelola lokasi penyimpanan barang.',
+                'route' => route('warehouses.index'),
+                'color' => 'bg-[#1FA8C9]',
+            ],
+            [
+                'title' => 'Kategori Barang',
+                'description' => 'Kelola kategori ATK/RTK.',
+                'route' => route('categories.index'),
+                'color' => 'bg-[#F4B400]',
+            ],
+            [
+                'title' => 'Data Barang',
+                'description' => 'Kelola item dan stok barang.',
+                'route' => route('items.index'),
+                'color' => 'bg-[#1FA8C9]',
+            ],
+            [
+                'title' => 'Stok Masuk',
+                'description' => 'Catat penambahan stok barang.',
+                'route' => route('stock-ins.index'),
+                'color' => 'bg-[#08B05A]',
+            ],
+            [
+                'title' => 'Approval',
+                'description' => 'Proses pengajuan barang.',
+                'route' => route('approvals.index'),
+                'color' => 'bg-[#E74C3C]',
+            ],
+            [
+                'title' => 'Laporan',
+                'description' => 'Lihat seluruh laporan sistem.',
+                'route' => route('reports.dashboard'),
+                'color' => 'bg-[#1FA8C9]',
+            ],
+        ];
+    } elseif ($role === 'admin') {
+        $quickMenus = [
+            [
+                'title' => 'Kategori Barang',
+                'description' => 'Kelola kategori ATK/RTK.',
+                'route' => route('categories.index'),
+                'color' => 'bg-[#F4B400]',
+            ],
+            [
+                'title' => 'Data Barang',
+                'description' => 'Kelola item dan stok barang.',
+                'route' => route('items.index'),
+                'color' => 'bg-[#1FA8C9]',
+            ],
+            [
+                'title' => 'Stok Masuk',
+                'description' => 'Catat stok masuk gudang.',
+                'route' => route('stock-ins.index'),
+                'color' => 'bg-[#08B05A]',
+            ],
+            [
+                'title' => 'Approval',
+                'description' => 'Proses pengajuan gudang.',
+                'route' => route('approvals.index'),
+                'color' => 'bg-[#E74C3C]',
+            ],
+            [
+                'title' => 'Laporan',
+                'description' => 'Lihat laporan gudang.',
+                'route' => route('reports.dashboard'),
+                'color' => 'bg-[#1FA8C9]',
+            ],
+        ];
+    } elseif ($role === 'staff') {
+        $quickMenus = [
+            [
+                'title' => 'Pengajuan Saya',
+                'description' => 'Lihat riwayat seluruh pengajuan.',
+                'route' => route('staff.requests.index'),
+                'color' => 'bg-[#1FA8C9]',
+            ],
+            [
+                'title' => 'Pengajuan dari Stok',
+                'description' => 'Ajukan barang yang tersedia.',
+                'route' => route('staff.requests.create'),
+                'color' => 'bg-[#08B05A]',
+            ],
+            [
+                'title' => 'Pengajuan Baru / Custom',
+                'description' => 'Ajukan barang yang belum tersedia.',
+                'route' => route('staff.requests.custom.create'),
+                'color' => 'bg-[#F4B400]',
+            ],
+        ];
+    } elseif ($role === 'approver') {
+        $quickMenus = [
+            [
+                'title' => 'Approval Pengajuan',
+                'description' => 'Proses pengajuan staff.',
+                'route' => route('approvals.index'),
+                'color' => 'bg-[#E74C3C]',
+            ],
+        ];
+    } else {
         $quickMenus = [];
+    }
 
-        if ($role === 'admin') {
-            $quickMenus = [
-                [
-                    'title' => 'Manajemen User',
-                    'description' => 'Kelola akun pengguna.',
-                    'route' => route('users.index'),
-                    'color' => 'bg-[#08B05A]',
-                ],
-                [
-                    'title' => 'Kategori Barang',
-                    'description' => 'Kelola kategori ATK/RTK.',
-                    'route' => route('categories.index'),
-                    'color' => 'bg-[#F4B400]',
-                ],
-                [
-                    'title' => 'Data Barang',
-                    'description' => 'Kelola item dan stok.',
-                    'route' => route('items.index'),
-                    'color' => 'bg-[#1FA8C9]',
-                ],
-                [
-                    'title' => 'Stok Masuk',
-                    'description' => 'Catat penambahan stok.',
-                    'route' => route('stock-ins.index'),
-                    'color' => 'bg-[#08B05A]',
-                ],
-                [
-                    'title' => 'Approval',
-                    'description' => 'Proses pengajuan barang.',
-                    'route' => route('approvals.index'),
-                    'color' => 'bg-[#E74C3C]',
-                ],
-                [
-                    'title' => 'Laporan',
-                    'description' => 'Lihat rekap data.',
-                    'route' => route('reports.dashboard'),
-                    'color' => 'bg-[#1FA8C9]',
-                ],
-            ];
-        } elseif ($role === 'staff') {
-            $quickMenus = [
-                [
-                    'title' => 'Pengajuan Saya',
-                    'description' => 'Lihat pengajuan barang.',
-                    'route' => route('staff.requests.index'),
-                    'color' => 'bg-[#1FA8C9]',
-                ],
-                [
-                    'title' => 'Buat Pengajuan',
-                    'description' => 'Ajukan kebutuhan ATK/RTK.',
-                    'route' => route('staff.requests.create'),
-                    'color' => 'bg-[#08B05A]',
-                ],
-            ];
-        } elseif ($role === 'approver') {
-            $quickMenus = [
-                [
-                    'title' => 'Approval Pengajuan',
-                    'description' => 'Proses pengajuan staff.',
-                    'route' => route('approvals.index'),
-                    'color' => 'bg-[#E74C3C]',
-                ],
-            ];
-        }
+        $roleLabel = match ($role) {
+            'super_admin' => 'SUPER ADMIN',
+            'admin' => 'ADMIN',
+            'staff' => 'STAFF',
+            'approver' => 'APPROVER',
+            default => strtoupper($role ?? '-'),
+        };
 
         /*
         |--------------------------------------------------------------------------
-        | Data Dashboard
+        | Nilai default dashboard
         |--------------------------------------------------------------------------
-        | Tabel stok terendah dan pengajuan terbaru hanya ditampilkan untuk
-        | admin dan approver.
+        | Mencegah error apabila controller belum mengirim data monitoring
+        | untuk role tertentu, termasuk Super Admin.
         */
-        $lowStockItems = collect();
-        $latestRequests = collect();
+        $lowStockItems = $lowStockItems ?? collect();
+        $latestRequests = $latestRequests ?? collect();
 
-        if (in_array($role, ['admin', 'approver'])) {
-            if (class_exists(\App\Models\Item::class)) {
-                $lowStockItems = \App\Models\Item::with('category')
-                    ->orderBy('current_stock', 'asc')
-                    ->orderBy('name', 'asc')
-                    ->limit(5)
-                    ->get();
-            }
+        $statusLabel = $statusLabel ?? function ($status) {
+            return match ($status) {
+                'pending' => 'Menunggu',
+                'approved' => 'Disetujui',
+                'rejected' => 'Ditolak',
+                'completed' => 'Selesai',
+                default => ucfirst((string) ($status ?: '-')),
+            };
+        };
 
-            if (class_exists(\App\Models\Request::class)) {
-                $latestRequests = \App\Models\Request::with('user')
-                    ->orderByDesc('request_date')
-                    ->orderByDesc('id')
-                    ->limit(5)
-                    ->get();
-            }
-        }
-
-        $statusBadge = function ($status) {
+        $statusBadge = $statusBadge ?? function ($status) {
             return match ($status) {
                 'pending' => 'bg-amber-50 text-amber-700 ring-amber-200',
                 'approved' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
                 'rejected' => 'bg-red-50 text-red-700 ring-red-200',
+                'completed' => 'bg-sky-50 text-sky-700 ring-sky-200',
                 default => 'bg-slate-50 text-slate-700 ring-slate-200',
-            };
-        };
-
-        $statusLabel = function ($status) {
-            return match ($status) {
-                'pending' => 'Pending',
-                'approved' => 'Approved',
-                'rejected' => 'Rejected',
-                default => ucfirst($status ?? '-'),
             };
         };
     @endphp
@@ -166,7 +203,7 @@
                             Role Aktif
                         </p>
                         <p class="truncate text-sm font-bold uppercase text-slate-800">
-                            {{ $role }}
+                            {{ $roleLabel }}
                         </p>
                         <p class="text-[10px] text-slate-500">
                             Hak akses pengguna
@@ -220,6 +257,35 @@
             </div>
         </div>
 
+
+        {{-- Statistik Operasional --}}
+        <div class="grid grid-cols-2 gap-3 xl:grid-cols-5">
+            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
+                <p class="text-[10px] font-semibold uppercase text-slate-500">Barang Aktif</p>
+                <p class="mt-1 text-lg font-bold text-slate-800">{{ number_format($totalItems ?? 0) }}</p>
+            </div>
+
+            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
+                <p class="text-[10px] font-semibold uppercase text-slate-500">Total Stok Akses</p>
+                <p class="mt-1 text-lg font-bold text-sky-700">{{ number_format($totalStock ?? 0) }}</p>
+            </div>
+
+            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
+                <p class="text-[10px] font-semibold uppercase text-slate-500">Stok Menipis</p>
+                <p class="mt-1 text-lg font-bold text-red-700">{{ number_format($lowStockCount ?? 0) }}</p>
+            </div>
+
+            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
+                <p class="text-[10px] font-semibold uppercase text-slate-500">Pengajuan Pending</p>
+                <p class="mt-1 text-lg font-bold text-amber-700">{{ number_format($pendingRequestCount ?? 0) }}</p>
+            </div>
+
+            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
+                <p class="text-[10px] font-semibold uppercase text-slate-500">Stok Masuk Bulan Ini</p>
+                <p class="mt-1 text-lg font-bold text-emerald-700">{{ number_format($stockInThisMonth ?? 0) }}</p>
+            </div>
+        </div>
+
         {{-- Main Panel --}}
         <div class="overflow-hidden rounded-md border border-[#D9E1E7] bg-white shadow-sm">
             <div class="border-t-4 border-[#1FA8C9]">
@@ -237,7 +303,7 @@
                             </div>
 
                             <span class="rounded-full bg-[#08B05A] px-2.5 py-1 text-[10px] font-bold text-white">
-                                {{ strtoupper($role) }}
+                                {{ $roleLabel }}
                             </span>
                         </div>
 
@@ -315,6 +381,62 @@
 
                             <div class="rounded-md border border-slate-200 bg-white p-2.5">
                                 <p class="text-[11px] font-semibold text-slate-700">
+                                    Role
+                                </p>
+                                <p class="mt-0.5 text-xs font-bold text-slate-800">
+                                    {{ $roleLabel }}
+                                </p>
+                                <p class="text-[10px] text-slate-500">
+                                    Hak akses akun
+                                </p>
+                            </div>
+
+                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
+                                <p class="text-[11px] font-semibold text-slate-700">
+                                    Entitas
+                                </p>
+
+                                @if ($role === 'super_admin')
+                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
+                                        Semua Entitas
+                                    </p>
+                                    <p class="text-[10px] text-slate-500">
+                                        Akses tidak dibatasi entitas
+                                    </p>
+                                @else
+                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
+                                        {{ $user->entity?->code ?? 'Belum ditentukan' }}
+                                    </p>
+                                    <p class="truncate text-[10px] text-slate-500">
+                                        {{ $user->entity?->name ?? 'Entitas belum dipilih' }}
+                                    </p>
+                                @endif
+                            </div>
+
+                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
+                                <p class="text-[11px] font-semibold text-slate-700">
+                                    Gudang
+                                </p>
+
+                                @if ($role === 'super_admin')
+                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
+                                        Semua Gudang
+                                    </p>
+                                    <p class="text-[10px] text-slate-500">
+                                        Akses tidak dibatasi gudang
+                                    </p>
+                                @else
+                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
+                                        {{ $user->warehouse?->name ?? 'Belum ditentukan' }}
+                                    </p>
+                                    <p class="text-[10px] text-slate-500">
+                                        {{ $user->warehouse?->code ?? 'Gudang belum dipilih' }}
+                                    </p>
+                                @endif
+                            </div>
+
+                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
+                                <p class="text-[11px] font-semibold text-slate-700">
                                     Tanggal
                                 </p>
                                 <p class="mt-0.5 text-xs font-bold text-slate-800">
@@ -330,7 +452,7 @@
             </div>
         </div>
 
-        @if (in_array($role, ['admin', 'approver']))
+        @if (in_array($role, ['super_admin', 'admin', 'approver']))
             {{-- Monitoring Tables --}}
             <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 {{-- 5 Barang Stok Terendah --}}
@@ -364,7 +486,7 @@
                             </thead>
 
                             <tbody class="divide-y divide-slate-100 bg-white">
-                                @forelse ($lowStockItems as $item)
+                                @forelse (($lowStockItems ?? collect()) as $stock)
                                     <tr class="hover:bg-slate-50">
                                         <td class="whitespace-nowrap px-4 py-3 text-[12px] text-slate-600">
                                             {{ $loop->iteration }}
@@ -380,23 +502,26 @@
 
                                                 <div>
                                                     <p class="text-xs font-bold text-slate-800">
-                                                        {{ $item->name ?? '-' }}
+                                                        {{ $stock->item?->name ?? '-' }}
                                                     </p>
                                                     <p class="text-[10px] text-slate-500">
-                                                        {{ $item->code ?? '-' }}
+                                                        {{ $stock->item?->code ?? '-' }}
+                                                    </p>
+                                                    <p class="text-[9px] text-sky-700">
+                                                        {{ $stock->entity?->code ?? '-' }} / {{ $stock->warehouse?->name ?? '-' }}
                                                     </p>
                                                 </div>
                                             </div>
                                         </td>
 
                                         <td class="whitespace-nowrap px-4 py-3 text-[12px] text-slate-600">
-                                            {{ $item->category->name ?? '-' }}
+                                            {{ $stock->item?->category?->name ?? '-' }}
                                         </td>
 
                                         <td class="whitespace-nowrap px-4 py-3 text-right">
                                             @php
-                                                $currentStock = $item->current_stock ?? 0;
-                                                $minimumStock = $item->minimum_stock ?? 0;
+                                                $currentStock = $stock->current_stock ?? 0;
+                                                $minimumStock = $stock->minimum_stock ?? 0;
                                                 $isLow = $minimumStock > 0 && $currentStock <= $minimumStock;
                                             @endphp
 
@@ -460,7 +585,7 @@
                             </thead>
 
                             <tbody class="divide-y divide-slate-100 bg-white">
-                                @forelse ($latestRequests as $request)
+                                @forelse (($latestRequests ?? collect()) as $request)
                                     <tr class="hover:bg-slate-50">
                                         <td class="whitespace-nowrap px-4 py-3 text-[12px] text-slate-600">
                                             {{ $loop->iteration }}
@@ -473,6 +598,9 @@
                                             <p class="text-[10px] text-slate-500">
                                                 {{ $request->request_date ? $request->request_date->format('d-m-Y') : '-' }}
                                             </p>
+                                            <p class="text-[9px] text-sky-700">
+                                                {{ $request->entity?->code ?? '-' }} / {{ $request->warehouse?->name ?? '-' }}
+                                            </p>
                                         </td>
 
                                         <td class="whitespace-nowrap px-4 py-3 text-[12px] text-slate-600">
@@ -480,8 +608,28 @@
                                         </td>
 
                                         <td class="whitespace-nowrap px-4 py-3 text-center">
-                                            <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset {{ $statusBadge($request->status ?? null) }}">
-                                                {{ $statusLabel($request->status ?? null) }}
+                                            @php
+                                                $requestStatus = $request->status ?? null;
+
+                                                $requestStatusLabel = match ($requestStatus) {
+                                                    'pending' => 'Menunggu',
+                                                    'approved' => 'Disetujui',
+                                                    'rejected' => 'Ditolak',
+                                                    'completed' => 'Selesai',
+                                                    default => ucfirst((string) ($requestStatus ?: '-')),
+                                                };
+
+                                                $requestStatusClass = match ($requestStatus) {
+                                                    'pending' => 'bg-amber-50 text-amber-700 ring-amber-200',
+                                                    'approved' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                                                    'rejected' => 'bg-red-50 text-red-700 ring-red-200',
+                                                    'completed' => 'bg-sky-50 text-sky-700 ring-sky-200',
+                                                    default => 'bg-slate-50 text-slate-700 ring-slate-200',
+                                                };
+                                            @endphp
+
+                                            <span class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset {{ $requestStatusClass }}">
+                                                {{ $requestStatusLabel }}
                                             </span>
                                         </td>
                                     </tr>

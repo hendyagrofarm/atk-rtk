@@ -65,6 +65,15 @@ class Item extends Model
         return $this->hasMany(RequestDetail::class);
     }
 
+
+    /**
+     * Satu barang dapat memiliki banyak riwayat audit stok.
+     */
+    public function stockAudits(): HasMany
+    {
+        return $this->hasMany(StockAudit::class);
+    }
+
     /**
      * Mengecek apakah stok utama barang sudah menipis.
      *

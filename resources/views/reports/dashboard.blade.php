@@ -1,10 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div>
-            <h1 class="text-sm font-semibold leading-5 text-slate-800">
+            <h1 class="text-sm font-semibold leading-5 text-white">
                 Dashboard Statistik Laporan
             </h1>
-            <p class="text-[10px] leading-4 text-slate-500">
+            <p class="text-[10px] leading-4 text-white/80">
                 Ringkasan data stok, pengajuan, dan barang keluar.
             </p>
         </div>
@@ -15,28 +15,33 @@
         <div class="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
             <div class="flex flex-wrap gap-1.5">
                 <a href="{{ route('reports.dashboard') }}"
-                   class="inline-flex items-center rounded-md bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm">
+                   class="inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-semibold transition {{ request()->routeIs('reports.dashboard') ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
                     Dashboard
                 </a>
 
                 <a href="{{ route('reports.stock') }}"
-                   class="inline-flex items-center rounded-md bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">
+                   class="inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-semibold transition {{ request()->routeIs('reports.stock') ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
                     Stok
                 </a>
 
                 <a href="{{ route('reports.stock-in') }}"
-                   class="inline-flex items-center rounded-md bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">
+                   class="inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-semibold transition {{ request()->routeIs('reports.stock-in') ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
                     Stok Masuk
                 </a>
 
                 <a href="{{ route('reports.requests') }}"
-                   class="inline-flex items-center rounded-md bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">
+                   class="inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-semibold transition {{ request()->routeIs('reports.requests') ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
                     Pengajuan
                 </a>
 
                 <a href="{{ route('reports.stock-out') }}"
-                   class="inline-flex items-center rounded-md bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">
+                   class="inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-semibold transition {{ request()->routeIs('reports.stock-out') ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
                     Barang Keluar
+                </a>
+
+                <a href="{{ route('reports.stock-transfers') }}"
+                   class="inline-flex items-center rounded-md px-3 py-1.5 text-[11px] font-semibold transition {{ request()->routeIs('reports.stock-transfers') ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200' }}">
+                    Mutasi Stok
                 </a>
             </div>
         </div>

@@ -12,103 +12,192 @@ use Throwable;
 
 class ApprovalController extends Controller
 {
-    /**
-     * Menampilkan daftar pengajuan pending dan riwayat approval.
-     */
     public function index()
     {
-        $pendingRequests = Pengajuan::with(['user', 'entity', 'details.item'])
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
+        $pendingRequests = Pengajuan::query()
+            ->with([
+                'user',
+                'entity',
+                'warehouse',
+                'details.item',
+            ])
             ->where('status', 'pending')
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
             ->latest()
             ->get();
 
-        $approvalHistories = Pengajuan::with(['user', 'entity', 'approver', 'details.item'])
-            ->whereIn('status', ['approved', 'rejected'])
+        $approvalHistories = Pengajuan::query()
+            ->with([
+                'user',
+                'entity',
+                'warehouse',
+                'approver',
+                'details.item',
+            ])
+            ->whereIn('status', [
+                'approved',
+                'rejected',
+            ])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
             ->latest('updated_at')
             ->get();
 
-        return view('approvals.index', compact('pendingRequests', 'approvalHistories'));
+        return view(
+            'approvals.index',
+            compact('pendingRequests', 'approvalHistories')
+        );
     }
 
-    /**
-     * Menampilkan detail pengajuan untuk approval.
-     */
     public function show(Pengajuan $approval)
     {
+        $this->ensureApprovalAccess($approval);
+
         $approval->load([
             'user',
             'entity',
+            'warehouse',
             'approver',
             'details.item.category',
-            'details.item.itemStocks.entity',
+            'details.item.itemStocks' => function ($query) use ($approval) {
+                $query
+                    ->where('entity_id', $approval->entity_id)
+                    ->where('warehouse_id', $approval->warehouse_id)
+                    ->with([
+                        'entity',
+                        'warehouse',
+                    ]);
+            },
         ]);
 
-        return view('approvals.show', compact('approval'));
+        return view(
+            'approvals.show',
+            compact('approval')
+        );
     }
 
-    /**
-     * Menyetujui pengajuan.
-     */
-    public function approve(HttpRequest $request, Pengajuan $approval)
-    {
+    public function approve(
+        HttpRequest $request,
+        Pengajuan $approval
+    ) {
+        $this->ensureApprovalAccess($approval);
+
         $request->validate([
-            'approved_quantity' => ['required', 'array'],
-            'approved_quantity.*' => ['required', 'integer', 'min:0'],
-            'approver_note' => ['nullable', 'string'],
-        ], [
-            'approved_quantity.required' => 'Jumlah disetujui wajib diisi.',
-            'approved_quantity.array' => 'Format jumlah disetujui tidak valid.',
-            'approved_quantity.*.required' => 'Jumlah disetujui per barang wajib diisi.',
-            'approved_quantity.*.integer' => 'Jumlah disetujui harus berupa angka.',
-            'approved_quantity.*.min' => 'Jumlah disetujui minimal 0.',
+            'approved_quantity' => [
+                'required',
+                'array',
+            ],
+            'approved_quantity.*' => [
+                'required',
+                'integer',
+                'min:0',
+            ],
+            'approver_note' => [
+                'nullable',
+                'string',
+                'max:3000',
+            ],
         ]);
 
         try {
             DB::transaction(function () use ($request, $approval) {
-                $lockedApproval = Pengajuan::where('id', $approval->id)
+                $lockedApproval = Pengajuan::query()
+                    ->where('id', $approval->id)
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                $this->ensureApprovalAccess($lockedApproval);
+
                 if ($lockedApproval->status !== 'pending') {
-                    throw new \Exception('Pengajuan ini sudah diproses sebelumnya.');
+                    throw new \RuntimeException(
+                        'Pengajuan ini sudah diproses sebelumnya.'
+                    );
                 }
 
-                if (! $lockedApproval->entity_id) {
-                    throw new \Exception('Pengajuan ini belum memiliki entitas ANR/MAA.');
+                if (
+                    ! $lockedApproval->entity_id
+                    || ! $lockedApproval->warehouse_id
+                ) {
+                    throw new \RuntimeException(
+                        'Pengajuan belum memiliki entitas atau gudang tujuan.'
+                    );
                 }
 
-                $lockedApproval->load('details');
+                $lockedApproval->load([
+                    'entity',
+                    'warehouse',
+                    'details',
+                ]);
 
                 foreach ($lockedApproval->details as $detail) {
-                    $approvedQuantity = (int) ($request->approved_quantity[$detail->id] ?? 0);
+                    $approvedQuantity = (int) (
+                        $request->approved_quantity[$detail->id] ?? 0
+                    );
 
                     if ($approvedQuantity > $detail->quantity) {
-                        throw new \Exception('Jumlah disetujui tidak boleh lebih dari jumlah diminta.');
+                        throw new \RuntimeException(
+                            'Jumlah disetujui tidak boleh lebih dari jumlah diminta.'
+                        );
                     }
 
-                    $item = Item::where('id', $detail->item_id)
+                    if (
+                        $lockedApproval->request_type === 'custom'
+                        || is_null($detail->item_id)
+                    ) {
+                        $detail->update([
+                            'approved_quantity' => $approvedQuantity,
+                        ]);
+
+                        continue;
+                    }
+
+                    $item = Item::query()
+                        ->where('id', $detail->item_id)
                         ->lockForUpdate()
                         ->firstOrFail();
 
-                    $itemStock = ItemStock::where('entity_id', $lockedApproval->entity_id)
+                    $itemStock = ItemStock::query()
+                        ->where('entity_id', $lockedApproval->entity_id)
+                        ->where('warehouse_id', $lockedApproval->warehouse_id)
                         ->where('item_id', $detail->item_id)
                         ->lockForUpdate()
                         ->first();
 
                     if (! $itemStock) {
-                        $itemStock = ItemStock::create([
-                            'entity_id' => $lockedApproval->entity_id,
-                            'item_id' => $detail->item_id,
-                            'current_stock' => 0,
-                            'minimum_stock' => $item->minimum_stock ?? 0,
-                        ]);
+                        throw new \RuntimeException(
+                            'Stok barang "' . $item->name
+                            . '" belum tersedia pada '
+                            . ($lockedApproval->entity?->code ?? '-')
+                            . ' / '
+                            . ($lockedApproval->warehouse?->name ?? '-')
+                            . '.'
+                        );
                     }
 
                     if ($itemStock->current_stock < $approvedQuantity) {
-                        throw new \Exception(
-                            'Stok barang "' . $item->name . '" untuk entitas ' .
-                            ($lockedApproval->entity->code ?? '-') .
-                            ' tidak cukup. Stok saat ini: ' . $itemStock->current_stock
+                        throw new \RuntimeException(
+                            'Stok barang "' . $item->name
+                            . '" pada '
+                            . ($lockedApproval->entity?->code ?? '-')
+                            . ' / '
+                            . ($lockedApproval->warehouse?->name ?? '-')
+                            . ' tidak cukup. Stok saat ini: '
+                            . $itemStock->current_stock
                         );
                     }
 
@@ -117,18 +206,16 @@ class ApprovalController extends Controller
                     ]);
 
                     if ($approvedQuantity > 0) {
-                        $itemStock->current_stock = $itemStock->current_stock - $approvedQuantity;
-                        $itemStock->save();
+                        $itemStock->decrement(
+                            'current_stock',
+                            $approvedQuantity
+                        );
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Sinkron stok utama items
-                    |--------------------------------------------------------------------------
-                    | Untuk sementara items.current_stock tetap menjadi total seluruh entitas,
-                    | agar fitur lama yang masih membaca kolom ini tidak rusak.
-                    */
-                    $item->current_stock = $item->itemStocks()->sum('current_stock');
+                    $item->current_stock = $item
+                        ->itemStocks()
+                        ->sum('current_stock');
+
                     $item->save();
                 }
 
@@ -140,33 +227,49 @@ class ApprovalController extends Controller
                 ]);
             });
 
+            $message = $approval->request_type === 'custom'
+                ? 'Pengajuan custom berhasil disetujui. Stok tidak berubah.'
+                : 'Pengajuan berhasil disetujui dan stok lokasi sudah dikurangi.';
+
             return redirect()
                 ->route('approvals.index')
-                ->with('success', 'Pengajuan berhasil disetujui dan stok entitas sudah dikurangi.');
+                ->with('success', $message);
         } catch (Throwable $e) {
+            report($e);
+
             return back()
                 ->withInput()
                 ->with('error', $e->getMessage());
         }
     }
 
-    /**
-     * Menolak pengajuan.
-     */
-    public function reject(HttpRequest $request, Pengajuan $approval)
-    {
+    public function reject(
+        HttpRequest $request,
+        Pengajuan $approval
+    ) {
+        $this->ensureApprovalAccess($approval);
+
         $request->validate([
-            'approver_note' => ['nullable', 'string'],
+            'approver_note' => [
+                'nullable',
+                'string',
+                'max:3000',
+            ],
         ]);
 
         try {
             DB::transaction(function () use ($request, $approval) {
-                $lockedApproval = Pengajuan::where('id', $approval->id)
+                $lockedApproval = Pengajuan::query()
+                    ->where('id', $approval->id)
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                $this->ensureApprovalAccess($lockedApproval);
+
                 if ($lockedApproval->status !== 'pending') {
-                    throw new \Exception('Pengajuan ini sudah diproses sebelumnya.');
+                    throw new \RuntimeException(
+                        'Pengajuan ini sudah diproses sebelumnya.'
+                    );
                 }
 
                 $lockedApproval->update([
@@ -179,11 +282,39 @@ class ApprovalController extends Controller
 
             return redirect()
                 ->route('approvals.index')
-                ->with('success', 'Pengajuan berhasil ditolak. Stok barang tidak berubah.');
+                ->with(
+                    'success',
+                    'Pengajuan berhasil ditolak. Stok tidak berubah.'
+                );
         } catch (Throwable $e) {
+            report($e);
+
             return back()
                 ->withInput()
                 ->with('error', $e->getMessage());
+        }
+    }
+
+    private function ensureApprovalAccess(Pengajuan $approval): void
+    {
+        $user = Auth::user();
+
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        if (
+            ! $approval->entity_id
+            || ! $approval->warehouse_id
+            || ! $user->canAccessLocation(
+                $approval->entity_id,
+                $approval->warehouse_id
+            )
+        ) {
+            abort(
+                403,
+                'Anda tidak memiliki akses untuk memproses pengajuan lokasi ini.'
+            );
         }
     }
 }

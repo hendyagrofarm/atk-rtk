@@ -1,11 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
         <div>
-            <h1 class="text-sm font-semibold leading-5 text-slate-800">
+            <h1 class="text-sm font-semibold leading-5 text-white">
                 Approval Pengajuan ATK/RTK
             </h1>
-            <p class="text-[10px] leading-4 text-slate-500">
-                Kelola persetujuan pengajuan barang berdasarkan entitas ANR/MAA.
+
+            <p class="text-[10px] leading-4 text-white/80">
+                Kelola persetujuan berdasarkan entitas dan gudang sumber.
             </p>
         </div>
     </x-slot>
@@ -28,8 +29,9 @@
                 <h2 class="text-xs font-semibold text-slate-800">
                     Pengajuan Menunggu Approval
                 </h2>
+
                 <p class="text-[10px] text-slate-500">
-                    Daftar pengajuan yang masih berstatus pending.
+                    Daftar pengajuan pending sesuai hak akses lokasi.
                 </p>
             </div>
 
@@ -40,9 +42,10 @@
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">No</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Nomor</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Entitas</th>
+                            <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Gudang</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Pemohon</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Tanggal</th>
-                            <th class="px-4 py-2.5 text-center text-[10px] font-bold uppercase text-slate-500">Jumlah Item</th>
+                            <th class="px-4 py-2.5 text-center text-[10px] font-bold uppercase text-slate-500">Item</th>
                             <th class="px-4 py-2.5 text-center text-[10px] font-bold uppercase text-slate-500">Status</th>
                             <th class="px-4 py-2.5 text-center text-[10px] font-bold uppercase text-slate-500">Aksi</th>
                         </tr>
@@ -62,17 +65,27 @@
                                 </td>
 
                                 <td class="px-4 py-2.5">
-                                    <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
-                                        {{ $request->entity->code ?? '-' }}
+                                    <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                        {{ $request->entity?->code ?? '-' }}
                                     </span>
                                 </td>
 
+                                <td class="px-4 py-2.5">
+                                    <p class="text-[11px] font-semibold text-slate-700">
+                                        {{ $request->warehouse?->name ?? '-' }}
+                                    </p>
+
+                                    <p class="text-[9px] text-slate-500">
+                                        {{ $request->warehouse?->code ?? '-' }}
+                                    </p>
+                                </td>
+
                                 <td class="px-4 py-2.5 text-[11px] text-slate-700">
-                                    {{ $request->user->name ?? '-' }}
+                                    {{ $request->user?->name ?? '-' }}
                                 </td>
 
                                 <td class="px-4 py-2.5 text-[11px] text-slate-600">
-                                    {{ $request->request_date ? $request->request_date->format('d/m/Y') : '-' }}
+                                    {{ $request->request_date?->format('d/m/Y') ?? '-' }}
                                 </td>
 
                                 <td class="px-4 py-2.5 text-center text-[11px] font-semibold text-slate-700">
@@ -80,7 +93,7 @@
                                 </td>
 
                                 <td class="px-4 py-2.5 text-center">
-                                    <span class="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+                                    <span class="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                                         Pending
                                     </span>
                                 </td>
@@ -94,7 +107,8 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="px-4 py-8 text-center text-[11px] text-slate-500">
+                                <td colspan="9"
+                                    class="px-4 py-8 text-center text-[11px] text-slate-500">
                                     Tidak ada pengajuan pending.
                                 </td>
                             </tr>
@@ -109,6 +123,7 @@
                 <h2 class="text-xs font-semibold text-slate-800">
                     Riwayat Approval
                 </h2>
+
                 <p class="text-[10px] text-slate-500">
                     Daftar pengajuan yang sudah diproses.
                 </p>
@@ -121,6 +136,7 @@
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">No</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Nomor</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Entitas</th>
+                            <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Gudang</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Pemohon</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Approver</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Tanggal Proses</th>
@@ -132,13 +148,7 @@
                     <tbody class="divide-y divide-slate-100 bg-white">
                         @forelse ($approvalHistories as $request)
                             @php
-                                $statusClass = $request->status === 'approved'
-                                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                                    : 'bg-red-50 text-red-700 ring-red-200';
-
-                                $statusText = $request->status === 'approved'
-                                    ? 'Disetujui'
-                                    : 'Ditolak';
+                                $approved = $request->status === 'approved';
                             @endphp
 
                             <tr class="hover:bg-slate-50">
@@ -153,26 +163,36 @@
                                 </td>
 
                                 <td class="px-4 py-2.5">
-                                    <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
-                                        {{ $request->entity->code ?? '-' }}
+                                    <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                        {{ $request->entity?->code ?? '-' }}
                                     </span>
                                 </td>
 
-                                <td class="px-4 py-2.5 text-[11px] text-slate-700">
-                                    {{ $request->user->name ?? '-' }}
+                                <td class="px-4 py-2.5">
+                                    <p class="text-[11px] font-semibold text-slate-700">
+                                        {{ $request->warehouse?->name ?? '-' }}
+                                    </p>
+
+                                    <p class="text-[9px] text-slate-500">
+                                        {{ $request->warehouse?->code ?? '-' }}
+                                    </p>
                                 </td>
 
                                 <td class="px-4 py-2.5 text-[11px] text-slate-700">
-                                    {{ $request->approver->name ?? '-' }}
+                                    {{ $request->user?->name ?? '-' }}
+                                </td>
+
+                                <td class="px-4 py-2.5 text-[11px] text-slate-700">
+                                    {{ $request->approver?->name ?? '-' }}
                                 </td>
 
                                 <td class="px-4 py-2.5 text-[11px] text-slate-600">
-                                    {{ $request->approved_at ? $request->approved_at->format('d/m/Y H:i') : '-' }}
+                                    {{ $request->approved_at?->format('d/m/Y H:i') ?? '-' }}
                                 </td>
 
                                 <td class="px-4 py-2.5 text-center">
-                                    <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset {{ $statusClass }}">
-                                        {{ $statusText }}
+                                    <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {{ $approved ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700' }}">
+                                        {{ $approved ? 'Disetujui' : 'Ditolak' }}
                                     </span>
                                 </td>
 
@@ -185,7 +205,8 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="px-4 py-8 text-center text-[11px] text-slate-500">
+                                <td colspan="9"
+                                    class="px-4 py-8 text-center text-[11px] text-slate-500">
                                     Belum ada riwayat approval.
                                 </td>
                             </tr>

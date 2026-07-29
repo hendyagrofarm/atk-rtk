@@ -13,53 +13,93 @@ use App\Models\ItemStock;
 use App\Models\Request as RequestModel;
 use App\Models\StockIn;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
 {
-    /**
-     * Dashboard Statistik Laporan.
-     */
     public function dashboard()
     {
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
+        $itemStockQuery = ItemStock::query()
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            );
+
+        $requestQuery = RequestModel::query()
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            );
+
+        $stockInQuery = StockIn::query()
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            );
+
         $totalItems = Item::count();
-
-        $totalStock = ItemStock::sum('current_stock');
-
-        $lowStockCount = ItemStock::whereColumn('current_stock', '<=', 'minimum_stock')
+        $totalStock = (clone $itemStockQuery)->sum('current_stock');
+        $lowStockCount = (clone $itemStockQuery)
+            ->whereColumn('current_stock', '<=', 'minimum_stock')
             ->count();
 
-        $stockInThisMonth = StockIn::whereMonth('date', now()->month)
+        $stockInThisMonth = (clone $stockInQuery)
+            ->whereMonth('date', now()->month)
             ->whereYear('date', now()->year)
             ->sum('quantity');
 
-        $totalRequests = RequestModel::count();
-
-        $pendingRequests = RequestModel::where('status', 'pending')
+        $totalRequests = (clone $requestQuery)->count();
+        $pendingRequests = (clone $requestQuery)->where('status', 'pending')->count();
+        $approvedRequests = (clone $requestQuery)
+            ->whereIn('status', ['approved', 'disetujui'])
+            ->count();
+        $rejectedRequests = (clone $requestQuery)
+            ->whereIn('status', ['rejected', 'ditolak'])
             ->count();
 
-        $approvedRequests = RequestModel::whereIn('status', ['approved', 'disetujui'])
-            ->count();
-
-        $rejectedRequests = RequestModel::whereIn('status', ['rejected', 'ditolak'])
-            ->count();
-
-        $stockOutThisMonth = RequestModel::with('details')
+        $stockOutThisMonth = (clone $requestQuery)
+            ->with('details')
             ->whereIn('status', ['approved', 'disetujui'])
             ->whereMonth('approved_at', now()->month)
             ->whereYear('approved_at', now()->year)
             ->get()
-            ->sum(function ($requestItem) {
-                return $requestItem->details->sum('approved_quantity');
-            });
+            ->sum(fn ($requestItem) => $requestItem->details->sum('approved_quantity'));
 
-        $lowestStockItems = ItemStock::with(['entity', 'item.category'])
-            ->orderBy('current_stock', 'asc')
+        $lowestStockItems = ItemStock::query()
+            ->with(['entity', 'warehouse', 'item.category'])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->orderBy('current_stock')
             ->limit(5)
             ->get();
 
-        $latestRequests = RequestModel::with(['user', 'entity', 'approver'])
+        $latestRequests = RequestModel::query()
+            ->with(['user', 'entity', 'warehouse', 'approver'])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($query) => $query
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
             ->latest()
             ->limit(5)
             ->get();
@@ -79,55 +119,125 @@ class ReportController extends Controller
         ));
     }
 
-    /**
-     * Laporan Stok Barang.
-     */
     public function stock(Request $request)
     {
-        $categories = Category::orderBy('name')->get();
-        $entities = Entity::where('is_active', true)->orderBy('code')->get();
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
 
-        $query = ItemStock::with(['entity', 'item.category'])
+        $categories = Category::orderBy('name')->get();
+
+        $entities = Entity::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedEntityIds))
+            ->orderBy('code')
+            ->get();
+
+        $warehouses = Warehouse::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedWarehouseIds))
+            ->orderBy('name')
+            ->get();
+
+        $entityId = $this->allowedFilterId(
+            $request->entity_id,
+            $isSuperAdmin,
+            $allowedEntityIds
+        );
+
+        $warehouseId = $this->allowedFilterId(
+            $request->warehouse_id,
+            $isSuperAdmin,
+            $allowedWarehouseIds
+        );
+
+        $categoryId = $request->category_id;
+        $stockStatus = $request->stock_status;
+        $search = trim((string) $request->search);
+
+        $itemStocks = ItemStock::query()
+            ->with(['entity', 'warehouse', 'item.category'])
             ->whereHas('item')
             ->whereHas('entity')
+            ->whereHas('warehouse')
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('item_stocks.entity_id', $allowedEntityIds)
+                    ->whereIn('item_stocks.warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($entityId, fn ($q) => $q->where('item_stocks.entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('item_stocks.warehouse_id', $warehouseId))
+            ->when(
+                filled($categoryId),
+                fn ($q) => $q->whereHas(
+                    'item',
+                    fn ($iq) => $iq->where('category_id', $categoryId)
+                )
+            )
+            ->when(
+                $search !== '',
+                fn ($q) => $q->whereHas('item', function ($iq) use ($search) {
+                    $iq->where(function ($sq) use ($search) {
+                        $sq->where('code', 'like', "%{$search}%")
+                            ->orWhere('name', 'like', "%{$search}%");
+                    });
+                })
+            )
+            ->when(
+                $stockStatus === 'low',
+                fn ($q) => $q->whereColumn(
+                    'item_stocks.current_stock',
+                    '<=',
+                    'item_stocks.minimum_stock'
+                )
+            )
+            ->when(
+                $stockStatus === 'safe',
+                fn ($q) => $q->whereColumn(
+                    'item_stocks.current_stock',
+                    '>',
+                    'item_stocks.minimum_stock'
+                )
+            )
             ->join('entities', 'item_stocks.entity_id', '=', 'entities.id')
+            ->join('warehouses', 'item_stocks.warehouse_id', '=', 'warehouses.id')
             ->join('items', 'item_stocks.item_id', '=', 'items.id')
             ->select('item_stocks.*')
             ->orderBy('entities.code')
-            ->orderBy('items.name');
-
-        if ($request->filled('entity_id')) {
-            $query->where('item_stocks.entity_id', $request->entity_id);
-        }
-
-        if ($request->filled('category_id')) {
-            $query->whereHas('item', function ($itemQuery) use ($request) {
-                $itemQuery->where('category_id', $request->category_id);
-            });
-        }
-
-        $itemStocks = $query->get();
+            ->orderBy('warehouses.name')
+            ->orderBy('items.name')
+            ->get();
 
         $totalItems = $itemStocks->count();
         $totalStock = $itemStocks->sum('current_stock');
+        $lowStockCount = $itemStocks
+            ->filter(fn ($stock) => $stock->current_stock <= $stock->minimum_stock)
+            ->count();
 
-        $lowStockCount = $itemStocks->filter(function ($stock) {
-            return $stock->current_stock <= $stock->minimum_stock;
-        })->count();
+        $totalLocations = $itemStocks
+            ->map(fn ($stock) => $stock->entity_id . '-' . $stock->warehouse_id)
+            ->unique()
+            ->count();
 
         return view('reports.stock', compact(
             'itemStocks',
             'categories',
             'entities',
+            'warehouses',
             'totalItems',
             'totalStock',
-            'lowStockCount'
+            'lowStockCount',
+            'totalLocations',
+            'entityId',
+            'warehouseId',
+            'categoryId',
+            'stockStatus',
+            'search'
         ));
     }
 
-    /**
-     * Export Excel Laporan Stok Barang.
-     */
     public function exportStockExcel(Request $request)
     {
         return Excel::download(
@@ -136,37 +246,61 @@ class ReportController extends Controller
         );
     }
 
-    /**
-     * Laporan Stok Masuk.
-     */
     public function stockIn(Request $request)
     {
-        $categories = Category::orderBy('name')->get();
-        $entities = Entity::where('is_active', true)->orderBy('code')->get();
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
 
-        $query = StockIn::with(['entity', 'item.category', 'user'])
+        $categories = Category::orderBy('name')->get();
+
+        $entities = Entity::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedEntityIds))
+            ->orderBy('code')
+            ->get();
+
+        $warehouses = Warehouse::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedWarehouseIds))
+            ->orderBy('name')
+            ->get();
+
+        $entityId = $this->allowedFilterId(
+            $request->entity_id,
+            $isSuperAdmin,
+            $allowedEntityIds
+        );
+
+        $warehouseId = $this->allowedFilterId(
+            $request->warehouse_id,
+            $isSuperAdmin,
+            $allowedWarehouseIds
+        );
+
+        $query = StockIn::query()
+            ->with(['entity', 'warehouse', 'item.category', 'user'])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($request->filled('start_date'), fn ($q) => $q->whereDate('date', '>=', $request->start_date))
+            ->when($request->filled('end_date'), fn ($q) => $q->whereDate('date', '<=', $request->end_date))
+            ->when($entityId, fn ($q) => $q->where('entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when(
+                $request->filled('category_id'),
+                fn ($q) => $q->whereHas(
+                    'item',
+                    fn ($iq) => $iq->where('category_id', $request->category_id)
+                )
+            )
             ->latest();
 
-        if ($request->filled('start_date')) {
-            $query->whereDate('date', '>=', $request->start_date);
-        }
-
-        if ($request->filled('end_date')) {
-            $query->whereDate('date', '<=', $request->end_date);
-        }
-
-        if ($request->filled('entity_id')) {
-            $query->where('entity_id', $request->entity_id);
-        }
-
-        if ($request->filled('category_id')) {
-            $query->whereHas('item', function ($itemQuery) use ($request) {
-                $itemQuery->where('category_id', $request->category_id);
-            });
-        }
-
         $stockIns = $query->get();
-
         $totalTransactions = $stockIns->count();
         $totalQuantity = $stockIns->sum('quantity');
 
@@ -174,14 +308,14 @@ class ReportController extends Controller
             'stockIns',
             'categories',
             'entities',
+            'warehouses',
+            'entityId',
+            'warehouseId',
             'totalTransactions',
             'totalQuantity'
         ));
     }
 
-    /**
-     * Export Excel Laporan Stok Masuk.
-     */
     public function exportStockInExcel(Request $request)
     {
         return Excel::download(
@@ -190,70 +324,94 @@ class ReportController extends Controller
         );
     }
 
-    /**
-     * Laporan Pengajuan Barang.
-     */
     public function requests(Request $request)
     {
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
         $categories = Category::orderBy('name')->get();
-        $entities = Entity::where('is_active', true)->orderBy('code')->get();
+
+        $entities = Entity::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedEntityIds))
+            ->orderBy('code')
+            ->get();
+
+        $warehouses = Warehouse::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedWarehouseIds))
+            ->orderBy('name')
+            ->get();
+
         $users = User::orderBy('name')->get();
 
-        $query = RequestModel::with(['user', 'entity', 'details.item.category', 'approver'])
+        $entityId = $this->allowedFilterId(
+            $request->entity_id,
+            $isSuperAdmin,
+            $allowedEntityIds
+        );
+
+        $warehouseId = $this->allowedFilterId(
+            $request->warehouse_id,
+            $isSuperAdmin,
+            $allowedWarehouseIds
+        );
+
+        $query = RequestModel::query()
+            ->with([
+                'user',
+                'entity',
+                'warehouse',
+                'details.item.category',
+                'approver',
+            ])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($request->filled('start_date'), fn ($q) => $q->whereDate('request_date', '>=', $request->start_date))
+            ->when($request->filled('end_date'), fn ($q) => $q->whereDate('request_date', '<=', $request->end_date))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->user_id))
+            ->when($entityId, fn ($q) => $q->where('entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when(
+                $request->filled('category_id'),
+                fn ($q) => $q->whereHas(
+                    'details.item',
+                    fn ($iq) => $iq->where('category_id', $request->category_id)
+                )
+            )
             ->latest();
-
-        if ($request->filled('start_date')) {
-            $query->whereDate('request_date', '>=', $request->start_date);
-        }
-
-        if ($request->filled('end_date')) {
-            $query->whereDate('request_date', '<=', $request->end_date);
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        if ($request->filled('entity_id')) {
-            $query->where('entity_id', $request->entity_id);
-        }
-
-        if ($request->filled('category_id')) {
-            $query->whereHas('details.item', function ($itemQuery) use ($request) {
-                $itemQuery->where('category_id', $request->category_id);
-            });
-        }
 
         $requests = $query->get();
 
         $totalRequests = $requests->count();
-
-        $totalItemsRequested = $requests->sum(function ($requestItem) {
-            return $requestItem->details->sum('quantity');
-        });
-
-        $totalItemsApproved = $requests->sum(function ($requestItem) {
-            return $requestItem->details->sum('approved_quantity');
-        });
+        $totalItemsRequested = $requests->sum(
+            fn ($requestItem) => $requestItem->details->sum('quantity')
+        );
+        $totalItemsApproved = $requests->sum(
+            fn ($requestItem) => $requestItem->details->sum('approved_quantity')
+        );
 
         return view('reports.requests', compact(
             'requests',
             'categories',
             'entities',
+            'warehouses',
             'users',
+            'entityId',
+            'warehouseId',
             'totalRequests',
             'totalItemsRequested',
             'totalItemsApproved'
         ));
     }
 
-    /**
-     * Export Excel Laporan Pengajuan Barang.
-     */
     public function exportRequestsExcel(Request $request)
     {
         return Excel::download(
@@ -262,67 +420,111 @@ class ReportController extends Controller
         );
     }
 
-    /**
-     * Laporan Barang Keluar.
-     */
     public function stockOut(Request $request)
     {
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
         $categories = Category::orderBy('name')->get();
-        $entities = Entity::where('is_active', true)->orderBy('code')->get();
+
+        $entities = Entity::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedEntityIds))
+            ->orderBy('code')
+            ->get();
+
+        $warehouses = Warehouse::query()
+            ->where('is_active', true)
+            ->when(! $isSuperAdmin, fn ($q) => $q->whereIn('id', $allowedWarehouseIds))
+            ->orderBy('name')
+            ->get();
+
         $users = User::orderBy('name')->get();
 
-        $query = RequestModel::with(['user', 'entity', 'details.item.category', 'approver'])
+        $entityId = $this->allowedFilterId(
+            $request->entity_id,
+            $isSuperAdmin,
+            $allowedEntityIds
+        );
+
+        $warehouseId = $this->allowedFilterId(
+            $request->warehouse_id,
+            $isSuperAdmin,
+            $allowedWarehouseIds
+        );
+
+        $query = RequestModel::query()
+            ->with([
+                'user',
+                'entity',
+                'warehouse',
+                'details.item.category',
+                'approver',
+            ])
             ->whereIn('status', ['approved', 'disetujui'])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($request->filled('start_date'), fn ($q) => $q->whereDate('approved_at', '>=', $request->start_date))
+            ->when($request->filled('end_date'), fn ($q) => $q->whereDate('approved_at', '<=', $request->end_date))
+            ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->user_id))
+            ->when($entityId, fn ($q) => $q->where('entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when(
+                $request->filled('category_id'),
+                fn ($q) => $q->whereHas(
+                    'details.item',
+                    fn ($iq) => $iq->where('category_id', $request->category_id)
+                )
+            )
             ->latest();
-
-        if ($request->filled('start_date')) {
-            $query->whereDate('approved_at', '>=', $request->start_date);
-        }
-
-        if ($request->filled('end_date')) {
-            $query->whereDate('approved_at', '<=', $request->end_date);
-        }
-
-        if ($request->filled('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        if ($request->filled('entity_id')) {
-            $query->where('entity_id', $request->entity_id);
-        }
-
-        if ($request->filled('category_id')) {
-            $query->whereHas('details.item', function ($itemQuery) use ($request) {
-                $itemQuery->where('category_id', $request->category_id);
-            });
-        }
 
         $requests = $query->get();
 
         $totalApprovedRequests = $requests->count();
-
-        $totalStockOut = $requests->sum(function ($requestItem) {
-            return $requestItem->details->sum('approved_quantity');
-        });
+        $totalStockOut = $requests->sum(
+            fn ($requestItem) => $requestItem->details->sum('approved_quantity')
+        );
 
         return view('reports.stock-out', compact(
             'requests',
             'categories',
             'entities',
+            'warehouses',
             'users',
+            'entityId',
+            'warehouseId',
             'totalApprovedRequests',
             'totalStockOut'
         ));
     }
 
-    /**
-     * Export Excel Laporan Barang Keluar.
-     */
     public function exportStockOutExcel(Request $request)
     {
         return Excel::download(
             new StockOutReportExport($request),
             'laporan-barang-keluar.xlsx'
         );
+    }
+
+    private function allowedFilterId(
+        mixed $value,
+        bool $isSuperAdmin,
+        $allowedIds
+    ): ?int {
+        if (! filled($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+
+        return $isSuperAdmin || $allowedIds->contains($id)
+            ? $id
+            : null;
     }
 }

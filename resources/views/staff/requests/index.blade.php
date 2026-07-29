@@ -2,16 +2,17 @@
     <x-slot name="header">
         <div class="flex items-center justify-between gap-3">
             <div>
-                <h1 class="text-sm font-semibold leading-5 text-slate-800">
+                <h1 class="text-sm font-semibold leading-5 text-white">
                     Pengajuan Saya
                 </h1>
-                <p class="text-[10px] leading-4 text-slate-500">
-                    Daftar pengajuan barang ATK/RTK yang Anda buat.
+
+                <p class="text-[10px] leading-4 text-white/80">
+                    Riwayat pengajuan berdasarkan entitas dan gudang sumber.
                 </p>
             </div>
 
             <a href="{{ route('staff.requests.create') }}"
-               class="inline-flex items-center gap-1.5 rounded-md bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-800">
+               class="inline-flex items-center rounded-md bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-800">
                 Buat Pengajuan
             </a>
         </div>
@@ -35,8 +36,9 @@
                 <h2 class="text-xs font-semibold text-slate-800">
                     Data Pengajuan
                 </h2>
+
                 <p class="text-[10px] text-slate-500">
-                    Riwayat pengajuan yang Anda buat.
+                    Daftar pengajuan yang Anda buat.
                 </p>
             </div>
 
@@ -47,6 +49,7 @@
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">No</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Nomor</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Entitas</th>
+                            <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Gudang</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Tanggal</th>
                             <th class="px-4 py-2.5 text-center text-[10px] font-bold uppercase text-slate-500">Item</th>
                             <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">Status</th>
@@ -58,9 +61,9 @@
                         @forelse ($requests as $request)
                             @php
                                 $statusClass = match ($request->status) {
-                                    'approved' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-                                    'rejected' => 'bg-red-50 text-red-700 ring-red-200',
-                                    default => 'bg-amber-50 text-amber-700 ring-amber-200',
+                                    'approved' => 'bg-emerald-50 text-emerald-700',
+                                    'rejected' => 'bg-red-50 text-red-700',
+                                    default => 'bg-amber-50 text-amber-700',
                                 };
 
                                 $statusText = match ($request->status) {
@@ -82,13 +85,23 @@
                                 </td>
 
                                 <td class="px-4 py-2.5">
-                                    <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-200">
-                                        {{ $request->entity->code ?? '-' }}
+                                    <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                        {{ $request->entity?->code ?? '-' }}
                                     </span>
                                 </td>
 
+                                <td class="px-4 py-2.5">
+                                    <p class="text-[11px] font-semibold text-slate-700">
+                                        {{ $request->warehouse?->name ?? '-' }}
+                                    </p>
+
+                                    <p class="text-[9px] text-slate-500">
+                                        {{ $request->warehouse?->code ?? '-' }}
+                                    </p>
+                                </td>
+
                                 <td class="px-4 py-2.5 text-[11px] text-slate-600">
-                                    {{ $request->request_date ? $request->request_date->format('d/m/Y') : '-' }}
+                                    {{ $request->request_date?->format('d/m/Y') ?? '-' }}
                                 </td>
 
                                 <td class="px-4 py-2.5 text-center text-[11px] font-semibold text-slate-700">
@@ -96,7 +109,7 @@
                                 </td>
 
                                 <td class="px-4 py-2.5">
-                                    <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset {{ $statusClass }}">
+                                    <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {{ $statusClass }}">
                                         {{ $statusText }}
                                     </span>
                                 </td>
@@ -110,7 +123,8 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-4 py-8 text-center text-[11px] text-slate-500">
+                                <td colspan="8"
+                                    class="px-4 py-8 text-center text-[11px] text-slate-500">
                                     Belum ada pengajuan.
                                 </td>
                             </tr>

@@ -5,6 +5,7 @@ namespace App\Exports;
 use App\Models\Request as RequestModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
@@ -15,7 +16,6 @@ use Maatwebsite\Excel\Events\AfterSheet;
 class RequestReportExport implements FromCollection, WithHeadings, WithCustomStartCell, ShouldAutoSize, WithEvents
 {
     protected Request $request;
-
     protected int $rowNumber = 0;
 
     public function __construct(Request $request)
@@ -25,57 +25,65 @@ class RequestReportExport implements FromCollection, WithHeadings, WithCustomSta
 
     public function collection()
     {
-        $query = RequestModel::with(['user', 'entity', 'details.item.category', 'approver'])
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
+        $entityId = $this->filterId($this->request->entity_id, $isSuperAdmin, $allowedEntityIds);
+        $warehouseId = $this->filterId($this->request->warehouse_id, $isSuperAdmin, $allowedWarehouseIds);
+
+        $query = RequestModel::query()
+            ->with([
+                'user',
+                'entity',
+                'warehouse',
+                'details.item.category',
+                'approver',
+            ])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($this->request->filled('start_date'), fn ($q) => $q->whereDate('request_date', '>=', $this->request->start_date))
+            ->when($this->request->filled('end_date'), fn ($q) => $q->whereDate('request_date', '<=', $this->request->end_date))
+            ->when($this->request->filled('status'), fn ($q) => $q->where('status', $this->request->status))
+            ->when($this->request->filled('user_id'), fn ($q) => $q->where('user_id', $this->request->user_id))
+            ->when($entityId, fn ($q) => $q->where('entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when(
+                $this->request->filled('category_id'),
+                fn ($q) => $q->whereHas(
+                    'details.item',
+                    fn ($iq) => $iq->where('category_id', $this->request->category_id)
+                )
+            )
             ->latest();
-
-        if ($this->request->filled('start_date')) {
-            $query->whereDate('request_date', '>=', $this->request->start_date);
-        }
-
-        if ($this->request->filled('end_date')) {
-            $query->whereDate('request_date', '<=', $this->request->end_date);
-        }
-
-        if ($this->request->filled('status')) {
-            $query->where('status', $this->request->status);
-        }
-
-        if ($this->request->filled('user_id')) {
-            $query->where('user_id', $this->request->user_id);
-        }
-
-        if ($this->request->filled('entity_id')) {
-            $query->where('entity_id', $this->request->entity_id);
-        }
-
-        if ($this->request->filled('category_id')) {
-            $query->whereHas('details.item', function ($itemQuery) {
-                $itemQuery->where('category_id', $this->request->category_id);
-            });
-        }
 
         $rows = new Collection();
 
         foreach ($query->get() as $requestItem) {
             foreach ($requestItem->details as $detail) {
-                $this->rowNumber++;
-
                 $rows->push([
-                    'No' => $this->rowNumber,
-                    'Nomor Pengajuan' => $requestItem->request_number,
-                    'Entitas' => $requestItem->entity->code ?? '-',
-                    'Tanggal Pengajuan' => $requestItem->request_date ? $requestItem->request_date->format('d/m/Y') : '-',
-                    'Pemohon' => $requestItem->user->name ?? '-',
-                    'Kode Barang' => $detail->item->code ?? '-',
-                    'Nama Barang' => $detail->item->name ?? '-',
-                    'Kategori' => $detail->item->category->name ?? '-',
-                    'Satuan' => $detail->item->unit ?? '-',
-                    'Jumlah Diminta' => (int) $detail->quantity,
-                    'Jumlah Disetujui' => (int) ($detail->approved_quantity ?? 0),
-                    'Status' => $this->statusText($requestItem->status),
-                    'Approver' => $requestItem->approver->name ?? '-',
-                    'Catatan Staff' => $requestItem->note ?? '-',
-                    'Catatan Approver' => $requestItem->approver_note ?? '-',
+                    ++$this->rowNumber,
+                    $requestItem->request_number,
+                    $requestItem->entity?->code ?? '-',
+                    $requestItem->warehouse?->name ?? '-',
+                    $requestItem->warehouse?->code ?? '-',
+                    $requestItem->request_date?->format('d/m/Y') ?? '-',
+                    $requestItem->user?->name ?? '-',
+                    $detail->item?->code ?? 'CUSTOM',
+                    $detail->item?->name ?? $detail->custom_item_name ?? '-',
+                    $detail->item?->category?->name ?? $detail->custom_category ?? '-',
+                    $detail->item?->unit ?? $detail->unit ?? '-',
+                    (int) $detail->quantity,
+                    (int) ($detail->approved_quantity ?? 0),
+                    $this->statusText($requestItem->status),
+                    $requestItem->approver?->name ?? '-',
+                    $requestItem->note ?? '-',
+                    $requestItem->approver_note ?? '-',
                 ]);
             }
         }
@@ -94,6 +102,8 @@ class RequestReportExport implements FromCollection, WithHeadings, WithCustomSta
             'No',
             'Nomor Pengajuan',
             'Entitas',
+            'Gudang',
+            'Kode Gudang',
             'Tanggal Pengajuan',
             'Pemohon',
             'Kode Barang',
@@ -109,15 +119,6 @@ class RequestReportExport implements FromCollection, WithHeadings, WithCustomSta
         ];
     }
 
-    private function statusText(?string $status): string
-    {
-        return match ($status) {
-            'approved', 'disetujui' => 'Disetujui',
-            'rejected', 'ditolak' => 'Ditolak',
-            default => 'Pending',
-        };
-    }
-
     public function registerEvents(): array
     {
         return [
@@ -125,104 +126,96 @@ class RequestReportExport implements FromCollection, WithHeadings, WithCustomSta
                 $sheet = $event->sheet->getDelegate();
                 $highestRow = $sheet->getHighestRow();
 
-                $sheet->mergeCells('A1:O1');
-                $sheet->mergeCells('A2:O2');
-
-                $sheet->setCellValue('A1', 'LAPORAN PENGAJUAN BARANG');
+                $sheet->mergeCells('A1:Q1');
+                $sheet->mergeCells('A2:Q2');
+                $sheet->setCellValue('A1', 'LAPORAN PENGAJUAN BARANG PER ENTITAS DAN GUDANG');
                 $sheet->setCellValue('A2', 'Tanggal Export: ' . now()->format('d-m-Y H:i'));
 
                 $sheet->getStyle('A1')->applyFromArray([
                     'font' => ['bold' => true, 'size' => 16],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+                    'alignment' => ['horizontal' => 'center'],
                 ]);
-
                 $sheet->getStyle('A2')->applyFromArray([
                     'font' => ['italic' => true, 'size' => 11],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+                    'alignment' => ['horizontal' => 'center'],
                 ]);
 
-                $headerRange = 'A4:O4';
-                $tableRange = 'A4:O' . $highestRow;
+                $headerRange = 'A4:Q4';
+                $tableRange = 'A4:Q' . $highestRow;
 
                 $sheet->getStyle($headerRange)->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['rgb' => '000000']],
-                    'fill' => [
-                        'fillType' => 'solid',
-                        'startColor' => ['rgb' => 'F8FAFC'],
-                    ],
+                    'font' => ['bold' => true],
+                    'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'F8FAFC']],
                     'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
-                    'borders' => [
-                        'allBorders' => [
-                            'borderStyle' => 'thin',
-                            'color' => ['rgb' => '000000'],
-                        ],
-                    ],
+                    'borders' => ['allBorders' => ['borderStyle' => 'thin']],
                 ]);
 
-                if ($highestRow >= 4) {
-                    $sheet->getStyle($tableRange)->applyFromArray([
-                        'borders' => [
-                            'allBorders' => [
-                                'borderStyle' => 'thin',
-                                'color' => ['rgb' => '000000'],
-                            ],
-                        ],
-                        'alignment' => ['vertical' => 'center'],
-                    ]);
-                }
+                $sheet->getStyle($tableRange)->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => 'thin']],
+                    'alignment' => ['vertical' => 'center'],
+                ]);
 
                 $sheet->setAutoFilter($headerRange);
                 $sheet->freezePane('A5');
 
                 if ($highestRow >= 5) {
-                    $sheet->getStyle('A5:A' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('C5:C' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('D5:D' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('I5:I' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('J5:K' . $highestRow)->getAlignment()->setHorizontal('right');
-                    $sheet->getStyle('L5:L' . $highestRow)->getAlignment()->setHorizontal('center');
-
-                    $sheet->getStyle('J5:K' . $highestRow)
+                    $sheet->getStyle('L5:M' . $highestRow)
                         ->getNumberFormat()
                         ->setFormatCode('#,##0');
 
                     for ($row = 5; $row <= $highestRow; $row++) {
-                        $status = $sheet->getCell('L' . $row)->getValue();
+                        $status = $sheet->getCell('N' . $row)->getValue();
 
-                        if ($status === 'Disetujui') {
-                            $sheet->getStyle('L' . $row)->applyFromArray([
+                        $style = match ($status) {
+                            'Disetujui' => [
                                 'font' => ['bold' => true, 'color' => ['rgb' => '047857']],
                                 'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'D1FAE5']],
-                            ]);
-                        } elseif ($status === 'Ditolak') {
-                            $sheet->getStyle('L' . $row)->applyFromArray([
+                            ],
+                            'Ditolak' => [
                                 'font' => ['bold' => true, 'color' => ['rgb' => 'B91C1C']],
                                 'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'FEE2E2']],
-                            ]);
-                        } else {
-                            $sheet->getStyle('L' . $row)->applyFromArray([
+                            ],
+                            default => [
                                 'font' => ['bold' => true, 'color' => ['rgb' => 'B45309']],
                                 'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'FEF3C7']],
-                            ]);
-                        }
+                            ],
+                        };
+
+                        $sheet->getStyle('N' . $row)->applyFromArray($style);
                     }
                 }
 
                 $widths = [
-                    'A' => 6, 'B' => 22, 'C' => 12, 'D' => 18, 'E' => 22,
-                    'F' => 18, 'G' => 28, 'H' => 18, 'I' => 12, 'J' => 18,
-                    'K' => 18, 'L' => 16, 'M' => 22, 'N' => 30, 'O' => 30,
+                    'A' => 6, 'B' => 22, 'C' => 12, 'D' => 24,
+                    'E' => 16, 'F' => 18, 'G' => 22, 'H' => 18,
+                    'I' => 28, 'J' => 18, 'K' => 12, 'L' => 18,
+                    'M' => 18, 'N' => 16, 'O' => 22, 'P' => 30,
+                    'Q' => 30,
                 ];
 
                 foreach ($widths as $column => $width) {
                     $sheet->getColumnDimension($column)->setWidth($width);
                 }
-
-                $sheet->getRowDimension(1)->setRowHeight(24);
-                $sheet->getRowDimension(2)->setRowHeight(20);
-                $sheet->getRowDimension(3)->setRowHeight(8);
-                $sheet->getRowDimension(4)->setRowHeight(22);
             },
         ];
+    }
+
+    private function filterId($value, bool $isSuperAdmin, $allowedIds): ?int
+    {
+        if (! filled($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+        return $isSuperAdmin || $allowedIds->contains($id) ? $id : null;
+    }
+
+    private function statusText(?string $status): string
+    {
+        return match ($status) {
+            'approved', 'disetujui' => 'Disetujui',
+            'rejected', 'ditolak' => 'Ditolak',
+            default => 'Pending',
+        };
     }
 }

@@ -5,6 +5,7 @@ namespace App\Exports;
 use App\Models\Request as RequestModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
@@ -15,7 +16,6 @@ use Maatwebsite\Excel\Events\AfterSheet;
 class StockOutReportExport implements FromCollection, WithHeadings, WithCustomStartCell, ShouldAutoSize, WithEvents
 {
     protected Request $request;
-
     protected int $rowNumber = 0;
 
     public function __construct(Request $request)
@@ -25,51 +25,62 @@ class StockOutReportExport implements FromCollection, WithHeadings, WithCustomSt
 
     public function collection()
     {
-        $query = RequestModel::with(['user', 'entity', 'details.item.category', 'approver'])
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
+
+        $entityId = $this->filterId($this->request->entity_id, $isSuperAdmin, $allowedEntityIds);
+        $warehouseId = $this->filterId($this->request->warehouse_id, $isSuperAdmin, $allowedWarehouseIds);
+
+        $query = RequestModel::query()
+            ->with([
+                'user',
+                'entity',
+                'warehouse',
+                'details.item.category',
+                'approver',
+            ])
             ->whereIn('status', ['approved', 'disetujui'])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($this->request->filled('start_date'), fn ($q) => $q->whereDate('approved_at', '>=', $this->request->start_date))
+            ->when($this->request->filled('end_date'), fn ($q) => $q->whereDate('approved_at', '<=', $this->request->end_date))
+            ->when($this->request->filled('user_id'), fn ($q) => $q->where('user_id', $this->request->user_id))
+            ->when($entityId, fn ($q) => $q->where('entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when(
+                $this->request->filled('category_id'),
+                fn ($q) => $q->whereHas(
+                    'details.item',
+                    fn ($iq) => $iq->where('category_id', $this->request->category_id)
+                )
+            )
             ->latest();
-
-        if ($this->request->filled('start_date')) {
-            $query->whereDate('approved_at', '>=', $this->request->start_date);
-        }
-
-        if ($this->request->filled('end_date')) {
-            $query->whereDate('approved_at', '<=', $this->request->end_date);
-        }
-
-        if ($this->request->filled('user_id')) {
-            $query->where('user_id', $this->request->user_id);
-        }
-
-        if ($this->request->filled('entity_id')) {
-            $query->where('entity_id', $this->request->entity_id);
-        }
-
-        if ($this->request->filled('category_id')) {
-            $query->whereHas('details.item', function ($itemQuery) {
-                $itemQuery->where('category_id', $this->request->category_id);
-            });
-        }
 
         $rows = new Collection();
 
         foreach ($query->get() as $requestItem) {
             foreach ($requestItem->details as $detail) {
-                $this->rowNumber++;
-
                 $rows->push([
-                    'No' => $this->rowNumber,
-                    'Nomor Pengajuan' => $requestItem->request_number,
-                    'Entitas' => $requestItem->entity->code ?? '-',
-                    'Tanggal Keluar' => $requestItem->approved_at ? $requestItem->approved_at->format('d/m/Y H:i') : '-',
-                    'Pemohon' => $requestItem->user->name ?? '-',
-                    'Kode Barang' => $detail->item->code ?? '-',
-                    'Nama Barang' => $detail->item->name ?? '-',
-                    'Kategori' => $detail->item->category->name ?? '-',
-                    'Satuan' => $detail->item->unit ?? '-',
-                    'Jumlah Keluar' => (int) ($detail->approved_quantity ?? 0),
-                    'Approver' => $requestItem->approver->name ?? '-',
-                    'Catatan Approver' => $requestItem->approver_note ?? '-',
+                    ++$this->rowNumber,
+                    $requestItem->request_number,
+                    $requestItem->entity?->code ?? '-',
+                    $requestItem->warehouse?->name ?? '-',
+                    $requestItem->warehouse?->code ?? '-',
+                    $requestItem->approved_at?->format('d/m/Y H:i') ?? '-',
+                    $requestItem->user?->name ?? '-',
+                    $detail->item?->code ?? '-',
+                    $detail->item?->name ?? '-',
+                    $detail->item?->category?->name ?? '-',
+                    $detail->item?->unit ?? '-',
+                    (int) ($detail->approved_quantity ?? 0),
+                    $requestItem->approver?->name ?? '-',
+                    $requestItem->approver_note ?? '-',
                 ]);
             }
         }
@@ -88,6 +99,8 @@ class StockOutReportExport implements FromCollection, WithHeadings, WithCustomSt
             'No',
             'Nomor Pengajuan',
             'Entitas',
+            'Gudang',
+            'Kode Gudang',
             'Tanggal Keluar',
             'Pemohon',
             'Kode Barang',
@@ -107,87 +120,70 @@ class StockOutReportExport implements FromCollection, WithHeadings, WithCustomSt
                 $sheet = $event->sheet->getDelegate();
                 $highestRow = $sheet->getHighestRow();
 
-                $sheet->mergeCells('A1:L1');
-                $sheet->mergeCells('A2:L2');
-
-                $sheet->setCellValue('A1', 'LAPORAN BARANG KELUAR');
+                $sheet->mergeCells('A1:N1');
+                $sheet->mergeCells('A2:N2');
+                $sheet->setCellValue('A1', 'LAPORAN BARANG KELUAR PER ENTITAS DAN GUDANG');
                 $sheet->setCellValue('A2', 'Tanggal Export: ' . now()->format('d-m-Y H:i'));
 
                 $sheet->getStyle('A1')->applyFromArray([
                     'font' => ['bold' => true, 'size' => 16],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+                    'alignment' => ['horizontal' => 'center'],
                 ]);
-
                 $sheet->getStyle('A2')->applyFromArray([
                     'font' => ['italic' => true, 'size' => 11],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+                    'alignment' => ['horizontal' => 'center'],
                 ]);
 
-                $headerRange = 'A4:L4';
-                $tableRange = 'A4:L' . $highestRow;
+                $headerRange = 'A4:N4';
+                $tableRange = 'A4:N' . $highestRow;
 
                 $sheet->getStyle($headerRange)->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['rgb' => '000000']],
-                    'fill' => [
-                        'fillType' => 'solid',
-                        'startColor' => ['rgb' => 'F8FAFC'],
-                    ],
+                    'font' => ['bold' => true],
+                    'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'F8FAFC']],
                     'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
-                    'borders' => [
-                        'allBorders' => [
-                            'borderStyle' => 'thin',
-                            'color' => ['rgb' => '000000'],
-                        ],
-                    ],
+                    'borders' => ['allBorders' => ['borderStyle' => 'thin']],
                 ]);
 
-                if ($highestRow >= 4) {
-                    $sheet->getStyle($tableRange)->applyFromArray([
-                        'borders' => [
-                            'allBorders' => [
-                                'borderStyle' => 'thin',
-                                'color' => ['rgb' => '000000'],
-                            ],
-                        ],
-                        'alignment' => ['vertical' => 'center'],
-                    ]);
-                }
+                $sheet->getStyle($tableRange)->applyFromArray([
+                    'borders' => ['allBorders' => ['borderStyle' => 'thin']],
+                    'alignment' => ['vertical' => 'center'],
+                ]);
 
                 $sheet->setAutoFilter($headerRange);
                 $sheet->freezePane('A5');
 
                 if ($highestRow >= 5) {
-                    $sheet->getStyle('A5:A' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('C5:C' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('D5:D' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('I5:I' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('J5:J' . $highestRow)->getAlignment()->setHorizontal('right');
-
-                    $sheet->getStyle('J5:J' . $highestRow)
+                    $sheet->getStyle('L5:L' . $highestRow)
                         ->getNumberFormat()
                         ->setFormatCode('#,##0');
 
-                    $sheet->getStyle('J5:J' . $highestRow)->applyFromArray([
+                    $sheet->getStyle('L5:L' . $highestRow)->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['rgb' => 'B91C1C']],
                         'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'FEE2E2']],
                     ]);
                 }
 
                 $widths = [
-                    'A' => 6, 'B' => 22, 'C' => 12, 'D' => 20,
-                    'E' => 22, 'F' => 18, 'G' => 28, 'H' => 18,
-                    'I' => 12, 'J' => 18, 'K' => 22, 'L' => 30,
+                    'A' => 6, 'B' => 22, 'C' => 12, 'D' => 24,
+                    'E' => 16, 'F' => 20, 'G' => 22, 'H' => 18,
+                    'I' => 28, 'J' => 18, 'K' => 12, 'L' => 18,
+                    'M' => 22, 'N' => 30,
                 ];
 
                 foreach ($widths as $column => $width) {
                     $sheet->getColumnDimension($column)->setWidth($width);
                 }
-
-                $sheet->getRowDimension(1)->setRowHeight(24);
-                $sheet->getRowDimension(2)->setRowHeight(20);
-                $sheet->getRowDimension(3)->setRowHeight(8);
-                $sheet->getRowDimension(4)->setRowHeight(22);
             },
         ];
+    }
+
+    private function filterId($value, bool $isSuperAdmin, $allowedIds): ?int
+    {
+        if (! filled($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+        return $isSuperAdmin || $allowedIds->contains($id) ? $id : null;
     }
 }

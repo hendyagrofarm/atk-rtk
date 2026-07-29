@@ -14,11 +14,14 @@ class Request extends Model
     protected $fillable = [
         'user_id',
         'entity_id',
+        'warehouse_id',
         'approver_id',
         'request_number',
         'request_date',
+        'request_type',
         'status',
         'note',
+        'estimated_total',
         'approver_note',
         'approved_at',
     ];
@@ -26,10 +29,11 @@ class Request extends Model
     protected $casts = [
         'request_date' => 'date',
         'approved_at' => 'datetime',
+        'estimated_total' => 'decimal:2',
     ];
 
     /**
-     * User yang membuat permintaan.
+     * User pembuat pengajuan.
      */
     public function user(): BelongsTo
     {
@@ -37,7 +41,7 @@ class Request extends Model
     }
 
     /**
-     * Entitas/perusahaan pengajuan: ANR atau MAA.
+     * Entitas pengajuan.
      */
     public function entity(): BelongsTo
     {
@@ -45,18 +49,72 @@ class Request extends Model
     }
 
     /**
-     * User admin/approver yang memproses permintaan.
+     * Gudang sumber pengajuan.
      */
-    public function approver(): BelongsTo
+    public function warehouse(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'approver_id');
+        return $this->belongsTo(Warehouse::class);
     }
 
     /**
-     * Satu permintaan memiliki banyak detail barang.
+     * User yang memproses approval.
+     */
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(
+            User::class,
+            'approver_id'
+        );
+    }
+
+    /**
+     * Detail barang pengajuan.
      */
     public function details(): HasMany
     {
-        return $this->hasMany(RequestDetail::class, 'request_id');
+        return $this->hasMany(
+            RequestDetail::class,
+            'request_id'
+        );
+    }
+
+    /**
+     * Pengajuan dari stok.
+     */
+    public function isStockRequest(): bool
+    {
+        return $this->request_type === 'stock';
+    }
+
+    /**
+     * Pengajuan barang custom.
+     */
+    public function isCustomRequest(): bool
+    {
+        return $this->request_type === 'custom';
+    }
+
+    /**
+     * Label jenis pengajuan.
+     */
+    public function getRequestTypeLabelAttribute(): string
+    {
+        return $this->request_type === 'custom'
+            ? 'Barang Baru / Custom'
+            : 'Barang Stok';
+    }
+
+    /**
+     * Label lokasi pengajuan.
+     *
+     * Contoh:
+     * ANR - Gudang Pabrik
+     */
+    public function getLocationLabelAttribute(): string
+    {
+        $entityCode = $this->entity?->code ?? '-';
+        $warehouseName = $this->warehouse?->name ?? '-';
+
+        return $entityCode . ' - ' . $warehouseName;
     }
 }

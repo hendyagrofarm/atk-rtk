@@ -13,13 +13,23 @@ class RequestDetail extends Model
     protected $fillable = [
         'request_id',
         'item_id',
+        'custom_item_name',
+        'custom_category',
+        'specification',
         'quantity',
         'approved_quantity',
+        'unit',
+        'estimated_price',
+        'product_url',
         'note',
     ];
 
+    protected $casts = [
+        'estimated_price' => 'decimal:2',
+    ];
+
     /**
-     * Detail ini milik satu permintaan.
+     * Detail ini milik satu pengajuan.
      */
     public function request(): BelongsTo
     {
@@ -27,10 +37,52 @@ class RequestDetail extends Model
     }
 
     /**
-     * Detail ini berisi satu barang.
+     * Barang master untuk pengajuan stok.
+     *
+     * Nilainya null untuk pengajuan custom.
      */
     public function item(): BelongsTo
     {
         return $this->belongsTo(Item::class, 'item_id');
+    }
+
+    /**
+     * Memeriksa apakah detail merupakan barang stok.
+     */
+    public function isStockItem(): bool
+    {
+        return ! is_null($this->item_id);
+    }
+
+    /**
+     * Memeriksa apakah detail merupakan barang custom.
+     */
+    public function isCustomItem(): bool
+    {
+        return is_null($this->item_id);
+    }
+
+    /**
+     * Nama barang yang dapat digunakan untuk stok maupun custom.
+     */
+    public function getDisplayNameAttribute(): string
+    {
+        if ($this->item_id && $this->item) {
+            return $this->item->name;
+        }
+
+        return $this->custom_item_name ?: '-';
+    }
+
+    /**
+     * Satuan barang.
+     */
+    public function getDisplayUnitAttribute(): string
+    {
+        if ($this->item_id && $this->item) {
+            return $this->item->unit ?? '';
+        }
+
+        return $this->unit ?? '';
     }
 }

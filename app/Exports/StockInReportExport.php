@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Models\StockIn;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
@@ -15,7 +16,6 @@ use Maatwebsite\Excel\Events\AfterSheet;
 class StockInReportExport implements FromCollection, WithHeadings, WithMapping, WithCustomStartCell, ShouldAutoSize, WithEvents
 {
     protected Request $request;
-
     protected int $rowNumber = 0;
 
     public function __construct(Request $request)
@@ -25,28 +25,35 @@ class StockInReportExport implements FromCollection, WithHeadings, WithMapping, 
 
     public function collection()
     {
-        $query = StockIn::with(['entity', 'item.category', 'user'])
-            ->latest();
+        $user = Auth::user();
+        $isSuperAdmin = $user->isSuperAdmin();
+        $allowedEntityIds = $user->allowedEntityIds();
+        $allowedWarehouseIds = $user->allowedWarehouseIds();
 
-        if ($this->request->filled('start_date')) {
-            $query->whereDate('date', '>=', $this->request->start_date);
-        }
+        $entityId = $this->filterId($this->request->entity_id, $isSuperAdmin, $allowedEntityIds);
+        $warehouseId = $this->filterId($this->request->warehouse_id, $isSuperAdmin, $allowedWarehouseIds);
 
-        if ($this->request->filled('end_date')) {
-            $query->whereDate('date', '<=', $this->request->end_date);
-        }
-
-        if ($this->request->filled('entity_id')) {
-            $query->where('entity_id', $this->request->entity_id);
-        }
-
-        if ($this->request->filled('category_id')) {
-            $query->whereHas('item', function ($itemQuery) {
-                $itemQuery->where('category_id', $this->request->category_id);
-            });
-        }
-
-        return $query->get();
+        return StockIn::query()
+            ->with(['entity', 'warehouse', 'item.category', 'user'])
+            ->when(
+                ! $isSuperAdmin,
+                fn ($q) => $q
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+            )
+            ->when($this->request->filled('start_date'), fn ($q) => $q->whereDate('date', '>=', $this->request->start_date))
+            ->when($this->request->filled('end_date'), fn ($q) => $q->whereDate('date', '<=', $this->request->end_date))
+            ->when($entityId, fn ($q) => $q->where('entity_id', $entityId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when(
+                $this->request->filled('category_id'),
+                fn ($q) => $q->whereHas(
+                    'item',
+                    fn ($iq) => $iq->where('category_id', $this->request->category_id)
+                )
+            )
+            ->latest()
+            ->get();
     }
 
     public function startCell(): string
@@ -60,6 +67,8 @@ class StockInReportExport implements FromCollection, WithHeadings, WithMapping, 
             'No',
             'Tanggal',
             'Entitas',
+            'Gudang',
+            'Kode Gudang',
             'Kode Barang',
             'Nama Barang',
             'Kategori',
@@ -73,19 +82,19 @@ class StockInReportExport implements FromCollection, WithHeadings, WithMapping, 
 
     public function map($stockIn): array
     {
-        $this->rowNumber++;
-
         return [
-            $this->rowNumber,
-            $stockIn->date ? $stockIn->date->format('d/m/Y') : '-',
-            $stockIn->entity->code ?? '-',
-            $stockIn->item->code ?? '-',
-            $stockIn->item->name ?? '-',
-            $stockIn->item->category->name ?? '-',
-            $stockIn->item->unit ?? '-',
+            ++$this->rowNumber,
+            $stockIn->date?->format('d/m/Y') ?? '-',
+            $stockIn->entity?->code ?? '-',
+            $stockIn->warehouse?->name ?? '-',
+            $stockIn->warehouse?->code ?? '-',
+            $stockIn->item?->code ?? '-',
+            $stockIn->item?->name ?? '-',
+            $stockIn->item?->category?->name ?? '-',
+            $stockIn->item?->unit ?? '-',
             (int) $stockIn->quantity,
             $stockIn->supplier ?? '-',
-            $stockIn->user->name ?? '-',
+            $stockIn->user?->name ?? '-',
             $stockIn->note ?? '-',
         ];
     }
@@ -94,98 +103,89 @@ class StockInReportExport implements FromCollection, WithHeadings, WithMapping, 
     {
         return [
             AfterSheet::class => function (AfterSheet $event) {
-                $sheet = $event->sheet->getDelegate();
-                $highestRow = $sheet->getHighestRow();
-
-                $sheet->mergeCells('A1:K1');
-                $sheet->mergeCells('A2:K2');
-
-                $sheet->setCellValue('A1', 'LAPORAN STOK MASUK');
-                $sheet->setCellValue('A2', 'Tanggal Export: ' . now()->format('d-m-Y H:i'));
-
-                $sheet->getStyle('A1')->applyFromArray([
-                    'font' => ['bold' => true, 'size' => 16],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
-                ]);
-
-                $sheet->getStyle('A2')->applyFromArray([
-                    'font' => ['italic' => true, 'size' => 11],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
-                ]);
-
-                $headerRange = 'A4:K4';
-                $tableRange = 'A4:K' . $highestRow;
-
-                $sheet->getStyle($headerRange)->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['rgb' => '000000']],
-                    'fill' => [
-                        'fillType' => 'solid',
-                        'startColor' => ['rgb' => 'F8FAFC'],
-                    ],
-                    'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
-                    'borders' => [
-                        'allBorders' => [
-                            'borderStyle' => 'thin',
-                            'color' => ['rgb' => '000000'],
-                        ],
-                    ],
-                ]);
-
-                if ($highestRow >= 4) {
-                    $sheet->getStyle($tableRange)->applyFromArray([
-                        'borders' => [
-                            'allBorders' => [
-                                'borderStyle' => 'thin',
-                                'color' => ['rgb' => '000000'],
-                            ],
-                        ],
-                        'alignment' => ['vertical' => 'center'],
-                    ]);
-                }
-
-                $sheet->setAutoFilter($headerRange);
-                $sheet->freezePane('A5');
-
-                if ($highestRow >= 5) {
-                    $sheet->getStyle('A5:A' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('B5:B' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('C5:C' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('G5:G' . $highestRow)->getAlignment()->setHorizontal('center');
-                    $sheet->getStyle('H5:H' . $highestRow)->getAlignment()->setHorizontal('right');
-
-                    $sheet->getStyle('H5:H' . $highestRow)
-                        ->getNumberFormat()
-                        ->setFormatCode('#,##0');
-
-                    $sheet->getStyle('H5:H' . $highestRow)->applyFromArray([
-                        'font' => [
-                            'bold' => true,
-                            'color' => ['rgb' => '047857'],
-                        ],
-                        'fill' => [
-                            'fillType' => 'solid',
-                            'startColor' => ['rgb' => 'D1FAE5'],
-                        ],
-                    ]);
-                }
-
-                $sheet->getColumnDimension('A')->setWidth(6);
-                $sheet->getColumnDimension('B')->setWidth(14);
-                $sheet->getColumnDimension('C')->setWidth(12);
-                $sheet->getColumnDimension('D')->setWidth(18);
-                $sheet->getColumnDimension('E')->setWidth(28);
-                $sheet->getColumnDimension('F')->setWidth(18);
-                $sheet->getColumnDimension('G')->setWidth(12);
-                $sheet->getColumnDimension('H')->setWidth(16);
-                $sheet->getColumnDimension('I')->setWidth(22);
-                $sheet->getColumnDimension('J')->setWidth(20);
-                $sheet->getColumnDimension('K')->setWidth(30);
-
-                $sheet->getRowDimension(1)->setRowHeight(24);
-                $sheet->getRowDimension(2)->setRowHeight(20);
-                $sheet->getRowDimension(3)->setRowHeight(8);
-                $sheet->getRowDimension(4)->setRowHeight(22);
+                $this->formatSheet(
+                    $event,
+                    'LAPORAN STOK MASUK PER ENTITAS DAN GUDANG',
+                    'M',
+                    'J',
+                    [
+                        'A' => 6, 'B' => 14, 'C' => 12, 'D' => 24,
+                        'E' => 16, 'F' => 18, 'G' => 28, 'H' => 18,
+                        'I' => 12, 'J' => 16, 'K' => 22, 'L' => 20,
+                        'M' => 30,
+                    ]
+                );
             },
         ];
+    }
+
+    private function filterId($value, bool $isSuperAdmin, $allowedIds): ?int
+    {
+        if (! filled($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+
+        return $isSuperAdmin || $allowedIds->contains($id) ? $id : null;
+    }
+
+    private function formatSheet(AfterSheet $event, string $title, string $lastColumn, string $numberColumn, array $widths): void
+    {
+        $sheet = $event->sheet->getDelegate();
+        $highestRow = $sheet->getHighestRow();
+
+        $sheet->mergeCells("A1:{$lastColumn}1");
+        $sheet->mergeCells("A2:{$lastColumn}2");
+        $sheet->setCellValue('A1', $title);
+        $sheet->setCellValue('A2', 'Tanggal Export: ' . now()->format('d-m-Y H:i'));
+
+        $sheet->getStyle('A1')->applyFromArray([
+            'font' => ['bold' => true, 'size' => 16],
+            'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+        ]);
+        $sheet->getStyle('A2')->applyFromArray([
+            'font' => ['italic' => true, 'size' => 11],
+            'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+        ]);
+
+        $headerRange = "A4:{$lastColumn}4";
+        $tableRange = "A4:{$lastColumn}{$highestRow}";
+
+        $sheet->getStyle($headerRange)->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'F8FAFC']],
+            'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+            'borders' => ['allBorders' => ['borderStyle' => 'thin']],
+        ]);
+
+        $sheet->getStyle($tableRange)->applyFromArray([
+            'borders' => ['allBorders' => ['borderStyle' => 'thin']],
+            'alignment' => ['vertical' => 'center'],
+        ]);
+
+        $sheet->setAutoFilter($headerRange);
+        $sheet->freezePane('A5');
+
+        if ($highestRow >= 5) {
+            $sheet->getStyle("{$numberColumn}5:{$numberColumn}{$highestRow}")
+                ->getNumberFormat()
+                ->setFormatCode('#,##0');
+
+            $sheet->getStyle("{$numberColumn}5:{$numberColumn}{$highestRow}")
+                ->applyFromArray([
+                    'font' => ['bold' => true, 'color' => ['rgb' => '047857']],
+                    'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'D1FAE5']],
+                ]);
+        }
+
+        foreach ($widths as $column => $width) {
+            $sheet->getColumnDimension($column)->setWidth($width);
+        }
+
+        $sheet->getRowDimension(1)->setRowHeight(24);
+        $sheet->getRowDimension(2)->setRowHeight(20);
+        $sheet->getRowDimension(3)->setRowHeight(8);
+        $sheet->getRowDimension(4)->setRowHeight(22);
     }
 }
