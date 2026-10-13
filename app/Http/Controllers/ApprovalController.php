@@ -8,6 +8,8 @@ use App\Models\Request as Pengajuan;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use SymfonyComponentHttpKernelxceptionHttpException;
 use Throwable;
 
 class ApprovalController extends Controller
@@ -234,12 +236,18 @@ class ApprovalController extends Controller
             return redirect()
                 ->route('approvals.index')
                 ->with('success', $message);
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (RuntimeException $e) {
+            return back()
+                ->withInput()
+                ->with('error', $e->getMessage());
         } catch (Throwable $e) {
             report($e);
 
             return back()
                 ->withInput()
-                ->with('error', $e->getMessage());
+                ->with('error', 'Terjadi kesalahan saat memproses pengajuan. Silakan coba kembali.');
         }
     }
 
@@ -286,12 +294,18 @@ class ApprovalController extends Controller
                     'success',
                     'Pengajuan berhasil ditolak. Stok tidak berubah.'
                 );
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (RuntimeException $e) {
+            return back()
+                ->withInput()
+                ->with('error', $e->getMessage());
         } catch (Throwable $e) {
             report($e);
 
             return back()
                 ->withInput()
-                ->with('error', $e->getMessage());
+                ->with('error', 'Terjadi kesalahan saat memproses pengajuan. Silakan coba kembali.');
         }
     }
 

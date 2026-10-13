@@ -72,29 +72,23 @@ return new class extends Migration
             ->where('code', 'GD-PABRIK')
             ->value('id');
 
-        if (! $defaultWarehouseId) {
+        $hasLegacyRows = DB::table('item_stocks')->whereNull('warehouse_id')->exists()
+            || DB::table('stock_ins')->whereNull('warehouse_id')->exists()
+            || DB::table('requests')->whereNull('warehouse_id')->exists();
+
+        if ($hasLegacyRows && ! $defaultWarehouseId) {
             throw new RuntimeException(
                 'Gudang default GD-PABRIK tidak ditemukan. Jalankan WarehouseSeeder terlebih dahulu.'
             );
         }
 
-        DB::table('item_stocks')
-            ->whereNull('warehouse_id')
-            ->update([
-                'warehouse_id' => $defaultWarehouseId,
-            ]);
-
-        DB::table('stock_ins')
-            ->whereNull('warehouse_id')
-            ->update([
-                'warehouse_id' => $defaultWarehouseId,
-            ]);
-
-        DB::table('requests')
-            ->whereNull('warehouse_id')
-            ->update([
-                'warehouse_id' => $defaultWarehouseId,
-            ]);
+        if ($hasLegacyRows) {
+            foreach (['item_stocks', 'stock_ins', 'requests'] as $legacyTable) {
+                DB::table($legacyTable)
+                    ->whereNull('warehouse_id')
+                    ->update(['warehouse_id' => $defaultWarehouseId]);
+            }
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -251,15 +245,7 @@ return new class extends Migration
         string $tableName,
         string $indexName
     ): bool {
-        $databaseName = DB::connection()
-            ->getDatabaseName();
-
-        $index = DB::table('information_schema.statistics')
-            ->where('table_schema', $databaseName)
-            ->where('table_name', $tableName)
-            ->where('index_name', $indexName)
-            ->first();
-
-        return $index !== null;
+        return collect(Schema::getIndexes($tableName))
+            ->contains(fn (array $index) => $index['name'] === $indexName);
     }
 };

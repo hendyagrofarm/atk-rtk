@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Entity;
+use App\Models\Item;
 use App\Models\ItemStock;
 use App\Models\StockAudit;
 use App\Models\Warehouse;
@@ -203,17 +204,17 @@ class StockAuditController extends Controller
             'entity_id' => [
                 'required',
                 'integer',
-                Rule::exists('entities', 'id'),
+                Rule::exists('entities', 'id')->where('is_active', true),
             ],
             'warehouse_id' => [
                 'required',
                 'integer',
-                Rule::exists('warehouses', 'id'),
+                Rule::exists('warehouses', 'id')->where('is_active', true),
             ],
             'item_id' => [
                 'required',
                 'integer',
-                Rule::exists('items', 'id'),
+                Rule::exists('items', 'id')->where('is_active', true),
             ],
             'physical_stock' => [
                 'required',
@@ -270,6 +271,18 @@ class StockAuditController extends Controller
             $itemStock->update([
                 'current_stock' => $physicalStock,
             ]);
+
+            $item = Item::query()
+                ->lockForUpdate()
+                ->find($validated['item_id']);
+
+            if ($item) {
+                $item->current_stock = $item
+                    ->itemStocks()
+                    ->sum('current_stock');
+
+                $item->save();
+            }
         });
 
         return redirect()
