@@ -131,25 +131,6 @@
         </div>
 
         <div>
-            <label for="current_stock" class="mb-1.5 block text-[11px] font-semibold text-slate-700">
-                Stok Saat Ini
-            </label>
-
-            <input
-                type="number"
-                name="current_stock"
-                id="current_stock"
-                min="0"
-                value="{{ old('current_stock', $item->current_stock ?? 0) }}"
-                class="block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-indigo-500 @error('current_stock') border-red-300 focus:border-red-500 focus:ring-red-500 @enderror"
-            >
-
-            @error('current_stock')
-                <p class="mt-1 text-[10px] text-red-600">{{ $message }}</p>
-            @enderror
-        </div>
-
-        <div>
             <label for="minimum_stock" class="mb-1.5 block text-[11px] font-semibold text-slate-700">
                 Stok Minimum
             </label>

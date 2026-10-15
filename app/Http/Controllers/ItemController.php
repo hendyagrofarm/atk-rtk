@@ -8,6 +8,7 @@ use App\Models\Item;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Throwable;
 
@@ -253,8 +254,41 @@ class ItemController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $this->validateItem($request);
-        $validated['is_active'] = $request->boolean('is_active');
+        $validated = $request->validate(
+            [
+                'items' => ['required', 'array', 'min:1', 'max:50'],
+                'items.*.code' => [
+                    'required',
+                    'string',
+                    'max:100',
+                    'distinct:ignore_case',
+                    Rule::unique('items', 'code'),
+                ],
+                'items.*.name' => ['required', 'string', 'max:255'],
+                'items.*.category_id' => ['required', 'exists:categories,id'],
+                'items.*.type' => ['required', Rule::in(['ATK', 'RTK'])],
+                'items.*.unit' => ['required', 'string', 'max:50'],
+                'items.*.minimum_stock' => ['required', 'integer', 'min:0'],
+                'items.*.storage_location' => ['nullable', 'string', 'max:255'],
+            ],
+            [
+                'items.required' => 'Minimal isi satu barang.',
+                'items.min' => 'Minimal isi satu barang.',
+                'items.max' => 'Maksimal 50 barang sekali simpan.',
+                'items.*.code.required' => 'Kode barang wajib diisi (barang ke-:position).',
+                'items.*.code.unique' => 'Kode barang ":input" sudah digunakan.',
+                'items.*.code.distinct' => 'Kode barang ":input" diisi lebih dari satu kali.',
+                'items.*.name.required' => 'Nama barang wajib diisi (barang ke-:position).',
+                'items.*.category_id.required' => 'Kategori wajib dipilih (barang ke-:position).',
+                'items.*.category_id.exists' => 'Kategori tidak valid (barang ke-:position).',
+                'items.*.type.required' => 'Jenis barang wajib dipilih (barang ke-:position).',
+                'items.*.type.in' => 'Jenis barang harus ATK atau RTK (barang ke-:position).',
+                'items.*.unit.required' => 'Satuan wajib diisi (barang ke-:position).',
+                'items.*.minimum_stock.required' => 'Stok minimum wajib diisi (barang ke-:position).',
+                'items.*.minimum_stock.integer' => 'Stok minimum harus berupa angka (barang ke-:position).',
+                'items.*.minimum_stock.min' => 'Stok minimum tidak boleh kurang dari 0 (barang ke-:position).',
+            ]
+        );
 
         /*
         |--------------------------------------------------------------------------
@@ -263,15 +297,30 @@ class ItemController extends Controller
         | Stok per entitas dan gudang dibuat saat transaksi Stok Masuk pertama.
         |--------------------------------------------------------------------------
         */
-        $validated['current_stock'] = 0;
+        DB::transaction(function () use ($validated) {
+            foreach ($validated['items'] as $row) {
+                Item::create([
+                    'category_id' => $row['category_id'],
+                    'code' => trim($row['code']),
+                    'name' => trim($row['name']),
+                    'type' => $row['type'],
+                    'unit' => trim($row['unit']),
+                    'minimum_stock' => $row['minimum_stock'],
+                    'storage_location' => $row['storage_location'] ?? null,
+                    'current_stock' => 0,
+                    'is_active' => true,
+                ]);
+            }
+        });
 
-        Item::create($validated);
+        $count = count($validated['items']);
 
         return redirect()
             ->route('items.index')
             ->with(
                 'success',
-                'Barang berhasil ditambahkan. Stok lokasi akan terbentuk saat transaksi stok masuk.'
+                ($count > 1 ? "{$count} barang berhasil ditambahkan." : 'Barang berhasil ditambahkan.')
+                    . ' Stok lokasi akan terbentuk saat transaksi stok masuk.'
             );
     }
 
@@ -398,11 +447,6 @@ class ItemController extends Controller
                 ],
                 'minimum_stock' => [
                     'required',
-                    'integer',
-                    'min:0',
-                ],
-                'current_stock' => [
-                    'nullable',
                     'integer',
                     'min:0',
                 ],

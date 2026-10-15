@@ -209,19 +209,22 @@ class StockInController extends Controller
                         ->where('is_active', true),
                 ],
 
-                'item_id' => [
-                    'required',
-                    'integer',
-                    Rule::exists('items', 'id')
-                        ->where('is_active', true),
-                ],
-
                 'date' => [
                     'required',
                     'date',
                 ],
 
-                'quantity' => [
+                'items' => ['required', 'array', 'min:1', 'max:100'],
+
+                'items.*.item_id' => [
+                    'required',
+                    'integer',
+                    'distinct',
+                    Rule::exists('items', 'id')
+                        ->where('is_active', true),
+                ],
+
+                'items.*.quantity' => [
                     'required',
                     'integer',
                     'min:1',
@@ -248,16 +251,21 @@ class StockInController extends Controller
                 'warehouse_id.integer' => 'Gudang tidak valid.',
                 'warehouse_id.exists' => 'Gudang tidak ditemukan atau sudah nonaktif.',
 
-                'item_id.required' => 'Barang wajib dipilih.',
-                'item_id.integer' => 'Barang tidak valid.',
-                'item_id.exists' => 'Barang tidak ditemukan atau sudah nonaktif.',
-
                 'date.required' => 'Tanggal masuk wajib diisi.',
                 'date.date' => 'Tanggal masuk tidak valid.',
 
-                'quantity.required' => 'Jumlah masuk wajib diisi.',
-                'quantity.integer' => 'Jumlah masuk harus berupa angka bulat.',
-                'quantity.min' => 'Jumlah masuk minimal 1.',
+                'items.required' => 'Minimal pilih satu barang.',
+                'items.min' => 'Minimal pilih satu barang.',
+                'items.max' => 'Maksimal 100 barang sekali simpan.',
+
+                'items.*.item_id.required' => 'Barang wajib dipilih (barang ke-:position).',
+                'items.*.item_id.integer' => 'Barang tidak valid (barang ke-:position).',
+                'items.*.item_id.distinct' => 'Barang yang sama tidak boleh dipilih lebih dari satu kali.',
+                'items.*.item_id.exists' => 'Barang tidak ditemukan atau sudah nonaktif (barang ke-:position).',
+
+                'items.*.quantity.required' => 'Jumlah masuk wajib diisi (barang ke-:position).',
+                'items.*.quantity.integer' => 'Jumlah masuk harus berupa angka bulat (barang ke-:position).',
+                'items.*.quantity.min' => 'Jumlah masuk minimal 1 (barang ke-:position).',
 
                 'supplier.string' => 'Supplier harus berupa teks.',
                 'supplier.max' => 'Nama supplier maksimal 255 karakter.',
@@ -284,54 +292,62 @@ class StockInController extends Controller
 
         try {
             DB::transaction(function () use ($validated, $user) {
-                $item = Item::query()
-                    ->where('is_active', true)
-                    ->lockForUpdate()
-                    ->findOrFail($validated['item_id']);
+                foreach ($validated['items'] as $row) {
+                    $quantity = (int) $row['quantity'];
 
-                $itemStock = ItemStock::query()
-                    ->where('entity_id', $validated['entity_id'])
-                    ->where('warehouse_id', $validated['warehouse_id'])
-                    ->where('item_id', $validated['item_id'])
-                    ->lockForUpdate()
-                    ->first();
+                    $item = Item::query()
+                        ->where('is_active', true)
+                        ->lockForUpdate()
+                        ->findOrFail($row['item_id']);
 
-                if (! $itemStock) {
-                    $itemStock = ItemStock::create([
+                    $itemStock = ItemStock::query()
+                        ->where('entity_id', $validated['entity_id'])
+                        ->where('warehouse_id', $validated['warehouse_id'])
+                        ->where('item_id', $item->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $itemStock) {
+                        $itemStock = ItemStock::create([
+                            'entity_id' => $validated['entity_id'],
+                            'warehouse_id' => $validated['warehouse_id'],
+                            'item_id' => $item->id,
+                            'current_stock' => 0,
+                            'minimum_stock' => $item->minimum_stock ?? 0,
+                        ]);
+                    }
+
+                    StockIn::create([
                         'entity_id' => $validated['entity_id'],
                         'warehouse_id' => $validated['warehouse_id'],
-                        'item_id' => $validated['item_id'],
-                        'current_stock' => 0,
-                        'minimum_stock' => $item->minimum_stock ?? 0,
+                        'item_id' => $item->id,
+                        'user_id' => $user->id,
+                        'quantity' => $quantity,
+                        'date' => $validated['date'],
+                        'supplier' => $validated['supplier'] ?? null,
+                        'note' => $validated['note'] ?? null,
                     ]);
+
+                    $itemStock->current_stock += $quantity;
+                    $itemStock->save();
+
+                    $item->current_stock = $item
+                        ->itemStocks()
+                        ->sum('current_stock');
+
+                    $item->save();
                 }
-
-                StockIn::create([
-                    'entity_id' => $validated['entity_id'],
-                    'warehouse_id' => $validated['warehouse_id'],
-                    'item_id' => $item->id,
-                    'user_id' => $user->id,
-                    'quantity' => $validated['quantity'],
-                    'date' => $validated['date'],
-                    'supplier' => $validated['supplier'] ?? null,
-                    'note' => $validated['note'] ?? null,
-                ]);
-
-                $itemStock->current_stock += $validated['quantity'];
-                $itemStock->save();
-
-                $item->current_stock = $item
-                    ->itemStocks()
-                    ->sum('current_stock');
-
-                $item->save();
             });
+
+            $count = count($validated['items']);
 
             return redirect()
                 ->route('stock-ins.index')
                 ->with(
                     'success',
-                    'Stok masuk berhasil disimpan sesuai entitas dan gudang tujuan.'
+                    $count > 1
+                        ? "Stok masuk {$count} barang berhasil disimpan sesuai entitas dan gudang tujuan."
+                        : 'Stok masuk berhasil disimpan sesuai entitas dan gudang tujuan.'
                 );
         } catch (Throwable $e) {
             report($e);

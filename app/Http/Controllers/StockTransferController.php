@@ -146,8 +146,14 @@ class StockTransferController extends Controller
                 'different:source_warehouse_id',
                 Rule::exists('warehouses', 'id')->where('is_active', true),
             ],
-            'item_id' => ['required', 'integer', Rule::exists('items', 'id')->where('is_active', true)],
-            'quantity' => ['required', 'integer', 'min:1'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.item_id' => [
+                'required',
+                'integer',
+                'distinct',
+                Rule::exists('items', 'id')->where('is_active', true),
+            ],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
             'transfer_date' => ['required', 'date'],
             'note' => ['nullable', 'string', 'max:2000'],
         ], [
@@ -155,9 +161,12 @@ class StockTransferController extends Controller
             'source_warehouse_id.required' => 'Gudang asal wajib dipilih.',
             'destination_warehouse_id.required' => 'Gudang tujuan wajib dipilih.',
             'destination_warehouse_id.different' => 'Gudang tujuan harus berbeda dari gudang asal.',
-            'item_id.required' => 'Barang wajib dipilih.',
-            'quantity.required' => 'Jumlah mutasi wajib diisi.',
-            'quantity.min' => 'Jumlah mutasi minimal 1.',
+            'items.required' => 'Minimal pilih satu barang.',
+            'items.min' => 'Minimal pilih satu barang.',
+            'items.*.item_id.required' => 'Barang wajib dipilih.',
+            'items.*.item_id.distinct' => 'Barang yang sama tidak boleh dipilih lebih dari satu kali.',
+            'items.*.quantity.required' => 'Jumlah mutasi wajib diisi.',
+            'items.*.quantity.min' => 'Jumlah mutasi minimal 1.',
             'transfer_date.required' => 'Tanggal mutasi wajib diisi.',
         ]);
 
@@ -182,65 +191,79 @@ class StockTransferController extends Controller
 
         try {
             DB::transaction(function () use ($validated, $user) {
-                $sourceStock = ItemStock::where('entity_id', $validated['entity_id'])
-                    ->where('warehouse_id', $validated['source_warehouse_id'])
-                    ->where('item_id', $validated['item_id'])
-                    ->lockForUpdate()
-                    ->first();
+                foreach ($validated['items'] as $row) {
+                    $itemId = (int) $row['item_id'];
+                    $quantity = (int) $row['quantity'];
 
-                if (! $sourceStock) {
-                    throw new RuntimeException('Stok barang pada gudang asal tidak ditemukan.');
-                }
+                    $sourceStock = ItemStock::where('entity_id', $validated['entity_id'])
+                        ->where('warehouse_id', $validated['source_warehouse_id'])
+                        ->where('item_id', $itemId)
+                        ->lockForUpdate()
+                        ->first();
 
-                if ($sourceStock->current_stock < $validated['quantity']) {
-                    throw new RuntimeException(
-                        'Stok gudang asal tidak mencukupi. Stok tersedia: ' .
-                        $sourceStock->current_stock . '.'
-                    );
-                }
+                    $itemLabel = Item::find($itemId)?->name ?? ('#' . $itemId);
 
-                $destinationStock = ItemStock::where('entity_id', $validated['entity_id'])
-                    ->where('warehouse_id', $validated['destination_warehouse_id'])
-                    ->where('item_id', $validated['item_id'])
-                    ->lockForUpdate()
-                    ->first();
+                    if (! $sourceStock) {
+                        throw new RuntimeException(
+                            'Stok barang "' . $itemLabel . '" pada gudang asal tidak ditemukan.'
+                        );
+                    }
 
-                if (! $destinationStock) {
-                    $destinationStock = ItemStock::create([
+                    if ($sourceStock->current_stock < $quantity) {
+                        throw new RuntimeException(
+                            'Stok gudang asal untuk "' . $itemLabel . '" tidak mencukupi. Stok tersedia: ' .
+                            $sourceStock->current_stock . '.'
+                        );
+                    }
+
+                    $destinationStock = ItemStock::where('entity_id', $validated['entity_id'])
+                        ->where('warehouse_id', $validated['destination_warehouse_id'])
+                        ->where('item_id', $itemId)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $destinationStock) {
+                        $destinationStock = ItemStock::create([
+                            'entity_id' => $validated['entity_id'],
+                            'warehouse_id' => $validated['destination_warehouse_id'],
+                            'item_id' => $itemId,
+                            'current_stock' => 0,
+                            'minimum_stock' => $sourceStock->minimum_stock,
+                        ]);
+                    }
+
+                    $sourceStock->decrement('current_stock', $quantity);
+                    $destinationStock->increment('current_stock', $quantity);
+
+                    StockTransfer::create([
+                        'transfer_number' => $this->generateTransferNumber(),
                         'entity_id' => $validated['entity_id'],
-                        'warehouse_id' => $validated['destination_warehouse_id'],
-                        'item_id' => $validated['item_id'],
-                        'current_stock' => 0,
-                        'minimum_stock' => $sourceStock->minimum_stock,
+                        'source_warehouse_id' => $validated['source_warehouse_id'],
+                        'destination_warehouse_id' => $validated['destination_warehouse_id'],
+                        'item_id' => $itemId,
+                        'user_id' => $user->id,
+                        'quantity' => $quantity,
+                        'transfer_date' => $validated['transfer_date'],
+                        'note' => $validated['note'] ?? null,
                     ]);
-                }
 
-                $sourceStock->decrement('current_stock', $validated['quantity']);
-                $destinationStock->increment('current_stock', $validated['quantity']);
+                    $item = Item::lockForUpdate()->find($itemId);
 
-                StockTransfer::create([
-                    'transfer_number' => $this->generateTransferNumber(),
-                    'entity_id' => $validated['entity_id'],
-                    'source_warehouse_id' => $validated['source_warehouse_id'],
-                    'destination_warehouse_id' => $validated['destination_warehouse_id'],
-                    'item_id' => $validated['item_id'],
-                    'user_id' => $user->id,
-                    'quantity' => $validated['quantity'],
-                    'transfer_date' => $validated['transfer_date'],
-                    'note' => $validated['note'] ?? null,
-                ]);
-
-                $item = Item::lockForUpdate()->find($validated['item_id']);
-
-                if ($item) {
-                    $item->current_stock = $item->itemStocks()->sum('current_stock');
-                    $item->save();
+                    if ($item) {
+                        $item->current_stock = $item->itemStocks()->sum('current_stock');
+                        $item->save();
+                    }
                 }
             });
 
             return redirect()
                 ->route('stock-transfers.index')
-                ->with('success', 'Mutasi stok berhasil disimpan.');
+                ->with(
+                    'success',
+                    count($validated['items']) > 1
+                        ? 'Mutasi ' . count($validated['items']) . ' barang berhasil disimpan.'
+                        : 'Mutasi stok berhasil disimpan.'
+                );
         } catch (RuntimeException $e) {
             return back()->withInput()->with('error', $e->getMessage());
         } catch (Throwable $e) {
