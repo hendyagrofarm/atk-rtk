@@ -11,6 +11,18 @@ class Request extends Model
 {
     use HasFactory;
 
+    /**
+     * Alasan penolakan terstruktur (kunci => label) untuk laporan KPI.
+     */
+    public const REJECTION_REASONS = [
+        'stok_tidak_cukup' => 'Stok tidak cukup / kosong',
+        'tidak_sesuai_kebutuhan' => 'Tidak sesuai kebutuhan',
+        'melebihi_kuota' => 'Melebihi kuota / batas pemakaian',
+        'data_tidak_lengkap' => 'Data pengajuan tidak lengkap',
+        'duplikat' => 'Pengajuan ganda',
+        'lainnya' => 'Lainnya',
+    ];
+
     protected $fillable = [
         'user_id',
         'entity_id',
@@ -21,8 +33,14 @@ class Request extends Model
         'request_type',
         'status',
         'note',
+        'department',
+        'pic_name',
+        'pic_position',
+        'superior_name',
+        'superior_position',
         'estimated_total',
         'approver_note',
+        'rejection_reason',
         'approved_at',
     ];
 
@@ -79,6 +97,23 @@ class Request extends Model
     }
 
     /**
+     * Tahap approval bertingkat (hanya untuk pengajuan custom).
+     */
+    public function approvals(): HasMany
+    {
+        return $this->hasMany(RequestApproval::class, 'request_id')
+            ->orderBy('step_order');
+    }
+
+    /**
+     * Apakah pengajuan ini memakai alur approval bertingkat.
+     */
+    public function usesApprovalChain(): bool
+    {
+        return $this->isCustomRequest() && $this->approvals->isNotEmpty();
+    }
+
+    /**
      * Pengajuan dari stok.
      */
     public function isStockRequest(): bool
@@ -92,6 +127,16 @@ class Request extends Model
     public function isCustomRequest(): bool
     {
         return $this->request_type === 'custom';
+    }
+
+    /**
+     * Label alasan penolakan, atau null jika tidak ada.
+     */
+    public function getRejectionReasonLabelAttribute(): ?string
+    {
+        return $this->rejection_reason
+            ? (self::REJECTION_REASONS[$this->rejection_reason] ?? $this->rejection_reason)
+            : null;
     }
 
     /**

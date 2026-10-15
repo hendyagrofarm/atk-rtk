@@ -23,6 +23,9 @@
             [
                 'custom_item_name' => '',
                 'custom_category' => '',
+                'budget_type' => '',
+                'brand_type' => '',
+                'usage_purpose' => '',
                 'unit' => '',
                 'quantity' => 1,
                 'estimated_price' => '',
@@ -121,6 +124,100 @@
 
                 <div>
                     <label
+                        for="department"
+                        class="mb-1 block text-[11px] font-semibold text-slate-700"
+                    >
+                        Divisi / Departemen
+                        <span class="text-red-500">*</span>
+                    </label>
+
+                    <input
+                        type="text"
+                        name="department"
+                        id="department"
+                        value="{{ old('department') }}"
+                        maxlength="150"
+                        class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                        placeholder="Contoh: Affair & Legal - HSE"
+                        required
+                    >
+                </div>
+
+                <div class="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-800">Penandatangan FPB</h4>
+                        <p class="text-[10px] text-slate-500">
+                            Kotak tanda tangan basah pada formulir. Spv. GA dan Manager HCGA mengikuti pengaturan Alur Approval.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div class="space-y-2">
+                            <p class="text-[11px] font-semibold text-slate-700">
+                                Diajukan oleh (PIC)
+                                @if ($canSetPic)
+                                    <span class="text-red-500">*</span>
+                                @endif
+                            </p>
+
+                            @if ($canSetPic)
+                                <input
+                                    type="text"
+                                    name="pic_name"
+                                    value="{{ old('pic_name') }}"
+                                    list="signer-names"
+                                    maxlength="150"
+                                    data-position-target="pic_position"
+                                    class="signer-name w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                    placeholder="Nama PIC"
+                                    autocomplete="off"
+                                    required
+                                >
+
+                                <input
+                                    type="text"
+                                    name="pic_position"
+                                    value="{{ old('pic_position') }}"
+                                    maxlength="150"
+                                    class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                    placeholder="Jabatan PIC (contoh: Staff K3L)"
+                                >
+                            @else
+                                <div class="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                                    <p class="font-semibold">{{ $user->name }}</p>
+                                    <p class="text-[10px] text-slate-500">{{ $user->position?->name ?? 'Jabatan belum diatur' }}</p>
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="space-y-2">
+                            <p class="text-[11px] font-semibold text-slate-700">Diketahui oleh (Atasan Langsung)</p>
+
+                            <input
+                                type="text"
+                                name="superior_name"
+                                value="{{ old('superior_name') }}"
+                                list="signer-names"
+                                maxlength="150"
+                                data-position-target="superior_position"
+                                class="signer-name w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                placeholder="Nama atasan langsung"
+                                autocomplete="off"
+                            >
+
+                            <input
+                                type="text"
+                                name="superior_position"
+                                value="{{ old('superior_position') }}"
+                                maxlength="150"
+                                class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                placeholder="Jabatan atasan langsung"
+                            >
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label
                         for="note"
                         class="mb-1 block text-[11px] font-semibold text-slate-700"
                     >
@@ -201,15 +298,48 @@
 
                                 <div>
                                     <label class="mb-1 block text-[10px] font-semibold text-slate-700">
-                                        Kategori
+                                        Jenis Anggaran
+                                        <span class="text-red-500">*</span>
+                                    </label>
+
+                                    <select
+                                        name="items[{{ $index }}][budget_type]"
+                                        class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                        required
+                                    >
+                                        <option value="">-- Pilih --</option>
+                                        <option value="OPEX" @selected(($oldItem['budget_type'] ?? '') === 'OPEX')>OPEX</option>
+                                        <option value="CAPEX" @selected(($oldItem['budget_type'] ?? '') === 'CAPEX')>CAPEX</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-semibold text-slate-700">
+                                        Kategori / Kelompok
                                     </label>
 
                                     <input
                                         type="text"
                                         name="items[{{ $index }}][custom_category]"
                                         value="{{ $oldItem['custom_category'] ?? '' }}"
+                                        list="category-suggestions"
                                         class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
-                                        placeholder="Perangkat IT"
+                                        placeholder="ATK, RTK, Obat P3K"
+                                    >
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-[10px] font-semibold text-slate-700">
+                                        Type / Merk
+                                    </label>
+
+                                    <input
+                                        type="text"
+                                        name="items[{{ $index }}][brand_type]"
+                                        value="{{ $oldItem['brand_type'] ?? '' }}"
+                                        maxlength="255"
+                                        class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                        placeholder="Contoh: Unicare 30L"
                                     >
                                 </div>
 
@@ -292,6 +422,20 @@
 
                                 <div class="md:col-span-2 xl:col-span-4">
                                     <label class="mb-1 block text-[10px] font-semibold text-slate-700">
+                                        Digunakan Untuk
+                                    </label>
+
+                                    <textarea
+                                        name="items[{{ $index }}][usage_purpose]"
+                                        rows="2"
+                                        maxlength="1000"
+                                        class="w-full rounded-md border-slate-300 text-xs focus:border-sky-500 focus:ring-sky-500"
+                                        placeholder="Contoh: Sebagai fasilitas tanggap darurat pada area kerja lantai 2 dan 3"
+                                    >{{ $oldItem['usage_purpose'] ?? '' }}</textarea>
+                                </div>
+
+                                <div class="md:col-span-2 xl:col-span-4">
+                                    <label class="mb-1 block text-[10px] font-semibold text-slate-700">
                                         Keterangan Tambahan
                                     </label>
 
@@ -343,6 +487,37 @@
             </div>
         </form>
     </div>
+
+    <datalist id="signer-names">
+        @foreach ($signerSuggestions as $person)
+            <option value="{{ $person['name'] }}"></option>
+        @endforeach
+    </datalist>
+
+    <script>
+        // Memilih nama dari saran mengisi jabatannya otomatis (jika kolom jabatan masih kosong).
+        (function () {
+            const people = @json($signerSuggestions);
+
+            document.querySelectorAll('.signer-name').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    const person = people.find(function (candidate) {
+                        return candidate.name.toLowerCase() === input.value.trim().toLowerCase();
+                    });
+                    const target = document.querySelector('[name="' + input.dataset.positionTarget + '"]');
+
+                    if (person && target && target.value.trim() === '' && person.position) {
+                        target.value = person.position;
+                    }
+                });
+            });
+        })();
+    </script>
+    <datalist id="category-suggestions">
+        <option value="ATK"></option>
+        <option value="RTK"></option>
+        <option value="Obat P3K"></option>
+    </datalist>
 
     <script>
         let customItemIndex = {{ count($oldItems) }};

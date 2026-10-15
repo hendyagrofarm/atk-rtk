@@ -96,6 +96,23 @@
                                     <span class="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                                         Pending
                                     </span>
+
+                                    @if ($request->usesApprovalChain())
+                                        @php
+                                            $waitingStep = \App\Support\ApprovalChain::currentStep($request);
+                                        @endphp
+
+                                        @if ($waitingStep)
+                                            <p class="mt-1 text-[9px] leading-3 text-slate-500">
+                                                Tahap {{ $waitingStep->step_order }}/{{ $request->approvals->count() }}:
+                                                {{ $waitingStep->position_name }}
+                                            </p>
+
+                                            @if (\App\Support\ApprovalChain::canAct(auth()->user(), $request))
+                                                <p class="text-[9px] font-bold text-emerald-700">Giliran Anda</p>
+                                            @endif
+                                        @endif
+                                    @endif
                                 </td>
 
                                 <td class="px-4 py-2.5 text-center">

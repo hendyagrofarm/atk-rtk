@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Item;
 use App\Models\ItemStock;
 use App\Models\Request as Pengajuan;
+use App\Support\ApprovalChain;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use RuntimeException;
-use SymfonyComponentHttpKernelxceptionHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
 
 class ApprovalController extends Controller
@@ -29,12 +31,11 @@ class ApprovalController extends Controller
                 'warehouse',
                 'details.item',
             ])
+            ->with('approvals')
             ->where('status', 'pending')
             ->when(
                 ! $isSuperAdmin,
-                fn ($query) => $query
-                    ->whereIn('entity_id', $allowedEntityIds)
-                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+                fn ($query) => $this->scopeToUserAccess($query, $user, $allowedEntityIds, $allowedWarehouseIds)
             )
             ->latest()
             ->get();
@@ -53,9 +54,7 @@ class ApprovalController extends Controller
             ])
             ->when(
                 ! $isSuperAdmin,
-                fn ($query) => $query
-                    ->whereIn('entity_id', $allowedEntityIds)
-                    ->whereIn('warehouse_id', $allowedWarehouseIds)
+                fn ($query) => $this->scopeToUserAccess($query, $user, $allowedEntityIds, $allowedWarehouseIds)
             )
             ->latest('updated_at')
             ->get();
@@ -71,10 +70,11 @@ class ApprovalController extends Controller
         $this->ensureApprovalAccess($approval);
 
         $approval->load([
-            'user',
+            'user.position',
             'entity',
             'warehouse',
             'approver',
+            'approvals.user',
             'details.item.category',
             'details.item.itemStocks' => function ($query) use ($approval) {
                 $query
@@ -87,9 +87,17 @@ class ApprovalController extends Controller
             },
         ]);
 
+        $currentStep = ApprovalChain::currentStep($approval);
+        $canAct = $approval->usesApprovalChain()
+            ? ApprovalChain::canAct(Auth::user(), $approval)
+            : $approval->status === 'pending';
+        $isFinalStep = $currentStep
+            ? ApprovalChain::isFinalStep($approval, $currentStep)
+            : false;
+
         return view(
             'approvals.show',
-            compact('approval')
+            compact('approval', 'currentStep', 'canAct', 'isFinalStep')
         );
     }
 
@@ -98,6 +106,10 @@ class ApprovalController extends Controller
         Pengajuan $approval
     ) {
         $this->ensureApprovalAccess($approval);
+
+        if ($approval->usesApprovalChain()) {
+            return $this->approveChain($request, $approval);
+        }
 
         $request->validate([
             'approved_quantity' => [
@@ -163,6 +175,15 @@ class ApprovalController extends Controller
                     ) {
                         $detail->update([
                             'approved_quantity' => $approvedQuantity,
+                        ]);
+
+                        continue;
+                    }
+
+                    // Tidak ada yang disetujui: tidak perlu memeriksa atau mengubah stok.
+                    if ($approvedQuantity === 0) {
+                        $detail->update([
+                            'approved_quantity' => 0,
                         ]);
 
                         continue;
@@ -257,13 +278,39 @@ class ApprovalController extends Controller
     ) {
         $this->ensureApprovalAccess($approval);
 
+        $isChain = $approval->usesApprovalChain();
+
         $request->validate([
+            'rejection_reason' => [
+                'required',
+                Rule::in(array_keys(Pengajuan::REJECTION_REASONS)),
+            ],
             'approver_note' => [
                 'nullable',
                 'string',
                 'max:3000',
             ],
+        ], [
+            'rejection_reason.required' => 'Alasan penolakan wajib dipilih.',
+            'rejection_reason.in' => 'Alasan penolakan tidak valid.',
         ]);
+
+        if ($isChain) {
+            try {
+                ApprovalChain::reject(
+                    $approval,
+                    Auth::user(),
+                    $request->rejection_reason,
+                    $request->approver_note
+                );
+            } catch (RuntimeException $e) {
+                return back()->withInput()->with('error', $e->getMessage());
+            }
+
+            return redirect()
+                ->route('approvals.index')
+                ->with('success', 'Pengajuan berhasil ditolak.');
+        }
 
         try {
             DB::transaction(function () use ($request, $approval) {
@@ -284,6 +331,7 @@ class ApprovalController extends Controller
                     'status' => 'rejected',
                     'approver_id' => Auth::id(),
                     'approver_note' => $request->approver_note,
+                    'rejection_reason' => $request->rejection_reason,
                     'approved_at' => now(),
                 ]);
             });
@@ -309,11 +357,83 @@ class ApprovalController extends Controller
         }
     }
 
+    /**
+     * Approval pengajuan custom dengan alur bertingkat.
+     */
+    private function approveChain(HttpRequest $request, Pengajuan $approval)
+    {
+        $request->validate([
+            'approved_quantity' => ['nullable', 'array'],
+            'approved_quantity.*' => ['nullable', 'integer', 'min:0'],
+            'approver_note' => ['nullable', 'string', 'max:3000'],
+        ]);
+
+        $step = ApprovalChain::currentStep($approval);
+
+        try {
+            $completed = ApprovalChain::approve(
+                $approval,
+                Auth::user(),
+                $request->approver_note,
+                $request->input('approved_quantity', [])
+            );
+        } catch (RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        if ($completed) {
+            $message = 'Seluruh tahap approval selesai. Pengajuan disetujui.';
+        } else {
+            $next = ApprovalChain::currentStep($approval->fresh('approvals'));
+
+            $message = ($step?->label ?? 'Tahap') . ' ' . ($step?->position_name ?? '')
+                . ' tercatat. Pengajuan diteruskan ke ' . ($next?->position_name ?? 'tahap berikutnya') . '.';
+        }
+
+        return redirect()
+            ->route('approvals.index')
+            ->with('success', $message);
+    }
+
+    /**
+     * Batasi daftar pengajuan sesuai akses lokasi user, ditambah pengajuan
+     * custom yang tahapnya memang menjadi jabatan user.
+     */
+    private function scopeToUserAccess($query, $user, $allowedEntityIds, $allowedWarehouseIds)
+    {
+        return $query->where(function ($scope) use ($user, $allowedEntityIds, $allowedWarehouseIds) {
+            $scope->where(function ($location) use ($allowedEntityIds, $allowedWarehouseIds) {
+                $location
+                    ->whereIn('entity_id', $allowedEntityIds)
+                    ->whereIn('warehouse_id', $allowedWarehouseIds);
+            });
+
+            if ($user->position_id) {
+                $scope->orWhere(function ($chain) use ($user, $allowedEntityIds) {
+                    $chain
+                        ->whereIn('entity_id', $allowedEntityIds)
+                        ->whereHas(
+                            'approvals',
+                            fn ($approvals) => $approvals->where('position_id', $user->position_id)
+                        );
+                });
+            }
+        });
+    }
+
     private function ensureApprovalAccess(Pengajuan $approval): void
     {
         $user = Auth::user();
 
         if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        if ($approval->usesApprovalChain()) {
+            if (! ApprovalChain::canView($user, $approval)) {
+                abort(403, 'Anda tidak memiliki akses untuk pengajuan ini.');
+            }
+
             return;
         }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Entity;
+use App\Models\Position;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
@@ -117,6 +118,7 @@ class UserController extends Controller
     {
         return view('users.create', [
             'roles' => $this->roles,
+            'positions' => Position::query()->where('is_active', true)->orderBy('name')->get(),
             'entities' => Entity::query()
                 ->where('is_active', true)
                 ->orderBy('code')
@@ -173,6 +175,7 @@ class UserController extends Controller
                     'role' => $validated['role'],
                     'entity_id' => $defaultEntityId,
                     'warehouse_id' => $defaultWarehouseId,
+                    'position_id' => $validated['position_id'] ?? null,
                     'password' => $validated['password'],
                     'is_active' => $request->boolean('is_active'),
                 ]);
@@ -237,6 +240,10 @@ class UserController extends Controller
         return view('users.edit', [
             'user' => $user,
             'roles' => $this->roles,
+            'positions' => Position::query()
+                ->where(fn ($query) => $query->where('is_active', true)->orWhere('id', $user->position_id))
+                ->orderBy('name')
+                ->get(),
             'entities' => $entities,
             'warehouses' => $warehouses,
             'selectedEntityIds' => $entityIds->map(fn ($id) => (string) $id)->all(),
@@ -307,6 +314,7 @@ class UserController extends Controller
                     'role' => $validated['role'],
                     'entity_id' => $defaultEntityId,
                     'warehouse_id' => $defaultWarehouseId,
+                    'position_id' => $validated['position_id'] ?? null,
                     'is_active' => $request->boolean('is_active'),
                 ];
 
@@ -421,6 +429,11 @@ class UserController extends Controller
                     Rule::unique('users', 'email')->ignore($user?->id),
                 ],
                 'role' => ['required', Rule::in($this->roles)],
+                'position_id' => [
+                    'nullable',
+                    'integer',
+                    Rule::exists('positions', 'id')->where('is_active', true),
+                ],
 
                 'entity_ids' => [
                     Rule::requiredIf(! $isSuperAdmin),

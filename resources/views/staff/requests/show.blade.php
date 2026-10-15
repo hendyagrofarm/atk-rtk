@@ -106,6 +106,15 @@
                     </p>
                 </div>
 
+                @if ($request->status === 'rejected' && $request->rejection_reason_label)
+                    <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 md:col-span-3">
+                        <p class="text-[10px] text-red-600">Alasan Penolakan</p>
+                        <p class="text-xs font-semibold text-red-800">
+                            {{ $request->rejection_reason_label }}
+                        </p>
+                    </div>
+                @endif
+
                 <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 md:col-span-3">
                     <p class="text-[10px] text-slate-500">Catatan Approver</p>
                     <p class="text-[11px] text-slate-700">
@@ -113,6 +122,26 @@
                     </p>
                 </div>
             </div>
+        </div>
+
+        <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+                <div>
+                    <h2 class="text-xs font-semibold text-slate-800">Lacak Pengajuan</h2>
+                    <p class="text-[10px] text-slate-500">
+                        Riwayat proses pengajuan, dari yang terbaru. Waktu dalam {{ now()->format('T') }}.
+                    </p>
+                </div>
+
+                @if ($request->isCustomRequest())
+                    <a href="{{ route('fpb.print', $request->id) }}" target="_blank"
+                       class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
+                        Cetak FPB
+                    </a>
+                @endif
+            </div>
+
+            @include('partials.request-tracking', ['events' => $events])
         </div>
 
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">

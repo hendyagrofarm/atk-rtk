@@ -107,9 +107,94 @@
                         {{ $approval->note ?: '-' }}
                     </p>
                 </div>
+
+                @if ($approval->status === 'rejected')
+                    <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 md:col-span-4">
+                        <p class="text-[10px] text-red-600">Alasan Penolakan</p>
+                        <p class="text-xs font-semibold text-red-800">
+                            {{ $approval->rejection_reason_label ?? '-' }}
+                        </p>
+
+                        @if ($approval->approver_note)
+                            <p class="mt-0.5 text-[11px] text-red-700">{{ $approval->approver_note }}</p>
+                        @endif
+                    </div>
+                @endif
             </div>
         </div>
 
+        @if ($approval->usesApprovalChain())
+            <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+                    <div>
+                        <h2 class="text-xs font-semibold text-slate-800">Alur Approval</h2>
+                        <p class="text-[10px] text-slate-500">
+                            @php
+                                $picName = filled($approval->pic_name) ? $approval->pic_name : ($approval->user?->name ?? '-');
+                                $picPosition = filled($approval->pic_name)
+                                    ? $approval->pic_position
+                                    : $approval->user?->position?->name;
+                            @endphp
+
+                            Diajukan oleh {{ $picName }}{{ $picPosition ? ' (' . $picPosition . ')' : '' }}
+                            @if ($approval->department) | {{ $approval->department }} @endif
+                            @if (filled($approval->pic_name) && $approval->user && $approval->user->name !== $approval->pic_name)
+                                | dibuat oleh {{ $approval->user->name }}
+                            @endif
+                            @if ($approval->superior_name)
+                                | atasan langsung: {{ $approval->superior_name }}
+                            @endif
+                        </p>
+                    </div>
+
+                    <a href="{{ route('fpb.print', $approval) }}" target="_blank"
+                       class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
+                        Cetak FPB
+                    </a>
+                </div>
+
+                @if ($approval->status === 'pending' && $currentStep)
+                    <div class="border-b border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-800">
+                        Menunggu <span class="font-semibold">{{ $currentStep->label }} {{ $currentStep->position_name }}</span>
+                        @if ($canAct)
+                            - giliran Anda.
+                        @else
+                            - Anda tidak berwenang memproses tahap ini.
+                        @endif
+                    </div>
+                @endif
+
+                <ol class="divide-y divide-slate-100">
+                    @foreach ($approval->approvals as $step)
+                        @php
+                            $badge = match ($step->status) {
+                                'approved' => ['Disetujui', 'bg-emerald-50 text-emerald-700 ring-emerald-200'],
+                                'rejected' => ['Ditolak', 'bg-red-50 text-red-700 ring-red-200'],
+                                'skipped' => ['Dilewati', 'bg-slate-50 text-slate-500 ring-slate-200'],
+                                default => ['Menunggu', 'bg-amber-50 text-amber-700 ring-amber-200'],
+                            };
+                        @endphp
+
+                        <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                            <div>
+                                <p class="text-[10px] text-slate-500">{{ $loop->iteration }}. {{ $step->label }}</p>
+                                <p class="text-xs font-semibold text-slate-800">{{ $step->position_name }}</p>
+                                @if ($step->user)
+                                    <p class="text-[10px] text-slate-600">
+                                        {{ $step->user->name }} | {{ $step->acted_at?->format('d/m/Y H:i') }}
+                                    </p>
+                                @endif
+                                @if ($step->note)
+                                    <p class="text-[10px] italic text-slate-500">"{{ $step->note }}"</p>
+                                @endif
+                            </div>
+
+                            <span class="rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset {{ $badge[1] }}">{{ $badge[0] }}</span>
+                        </li>
+                    @endforeach
+                </ol>
+            </div>
+        @endif
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-4 py-3">
                 <h2 class="text-xs font-semibold text-slate-800">
@@ -124,7 +209,7 @@
                 </p>
             </div>
 
-            @if ($approval->status === 'pending')
+            @if ($approval->status === 'pending' && $canAct)
                 <form method="POST" action="{{ route('approvals.approve', $approval) }}">
                     @csrf
 
@@ -181,6 +266,12 @@
                                             @else
                                                 {{ $availableStock }}
                                                 {{ $detail->item?->unit ?? '' }}
+
+                                                @if ($detail->quantity > $availableStock)
+                                                    <p class="mt-0.5 text-[10px] font-bold text-red-600">
+                                                        {{ $availableStock <= 0 ? 'Stok kosong' : 'Kurang ' . ($detail->quantity - $availableStock) }}
+                                                    </p>
+                                                @endif
                                             @endif
                                         </td>
 
@@ -190,6 +281,9 @@
                                         </td>
 
                                         <td class="px-4 py-2.5 text-right">
+                                            @if ($approval->usesApprovalChain() && ! $isFinalStep)
+                                                <span class="text-[10px] text-slate-400">Ditetapkan di tahap akhir</span>
+                                            @else
                                             <input type="number"
                                                    name="approved_quantity[{{ $detail->id }}]"
                                                    min="0"
@@ -202,6 +296,7 @@
                                                    ) }}"
                                                    required
                                                    class="w-24 rounded-md border-slate-300 px-3 py-1.5 text-right text-xs">
+                                            @endif
                                         </td>
 
                                         <td class="px-4 py-2.5 text-[11px] text-slate-600">
@@ -225,28 +320,76 @@
                     </div>
 
                     <div class="flex justify-end border-t border-slate-200 bg-slate-50 px-4 py-3">
+                        @php
+                            $approveLabel = $approval->usesApprovalChain() && ! $isFinalStep
+                                ? 'Setujui Tahap Ini'
+                                : 'Setujui Pengajuan';
+                            $approveConfirm = $approval->request_type === 'custom'
+                                ? ($approval->usesApprovalChain() && ! $isFinalStep
+                                    ? 'Setujui tahap ini dan teruskan ke tahap berikutnya?'
+                                    : 'Setujui pengajuan custom ini? Stok tidak berubah.')
+                                : 'Setujui pengajuan dan kurangi stok lokasi ini?';
+                        @endphp
+
                         <button type="submit"
-                                onclick="return confirm('Setujui pengajuan dan kurangi stok lokasi ini?')"
+                                onclick="return confirm('{{ $approveConfirm }}')"
                                 class="rounded-md bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white">
-                            Setujui Pengajuan
+                            {{ $approveLabel }}
                         </button>
                     </div>
                 </form>
 
                 <form method="POST"
                       action="{{ route('approvals.reject', $approval) }}"
-                      class="flex justify-end border-t border-slate-200 bg-slate-50 px-4 pb-3">
+                      class="space-y-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
                     @csrf
 
-                    <input type="hidden"
-                           name="approver_note"
-                           value="Pengajuan ditolak">
+                    <p class="text-[11px] font-semibold text-slate-700">
+                        Atau tolak pengajuan ini
+                    </p>
 
-                    <button type="submit"
-                            onclick="return confirm('Tolak pengajuan ini?')"
-                            class="rounded-md bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white">
-                        Tolak Pengajuan
-                    </button>
+                    <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        <div>
+                            <label for="rejection_reason"
+                                   class="mb-1 block text-[10px] font-semibold text-slate-600">
+                                Alasan Penolakan <span class="text-red-500">*</span>
+                            </label>
+
+                            <select name="rejection_reason"
+                                    id="rejection_reason"
+                                    required
+                                    class="block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs">
+                                <option value="">-- Pilih Alasan --</option>
+                                @foreach (\App\Models\Request::REJECTION_REASONS as $key => $label)
+                                    <option value="{{ $key }}" @selected(old('rejection_reason') === $key)>
+                                        {{ $label }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="reject_note"
+                                   class="mb-1 block text-[10px] font-semibold text-slate-600">
+                                Catatan Penolakan
+                            </label>
+
+                            <input type="text"
+                                   name="approver_note"
+                                   id="reject_note"
+                                   maxlength="3000"
+                                   placeholder="Opsional"
+                                   class="block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs">
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button type="submit"
+                                onclick="return confirm('Tolak pengajuan ini?')"
+                                class="rounded-md bg-red-600 px-3 py-1.5 text-[11px] font-semibold text-white">
+                            Tolak Pengajuan
+                        </button>
+                    </div>
                 </form>
             @else
                 <div class="overflow-x-auto">

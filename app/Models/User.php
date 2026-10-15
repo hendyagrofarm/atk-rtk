@@ -30,6 +30,7 @@ class User extends Authenticatable
         'role',
         'entity_id',
         'warehouse_id',
+        'position_id',
         'is_active',
     ];
 
@@ -66,6 +67,14 @@ class User extends Authenticatable
     /**
      * Entitas default user.
      */
+    /**
+     * Jabatan user, dipakai pada alur approval pengajuan custom.
+     */
+    public function position(): BelongsTo
+    {
+        return $this->belongsTo(Position::class);
+    }
+
     public function entity(): BelongsTo
     {
         return $this->belongsTo(Entity::class);

@@ -155,6 +155,13 @@
                                 @foreach ($oldItems as $index => $oldItem)
                                     <tr class="item-row">
                                         <td class="px-4 py-2.5">
+                                            <input type="search"
+                                                   class="item-search mb-1.5 block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs"
+                                                   placeholder="Cari kode / nama barang..."
+                                                   autocomplete="off"
+                                                   oninput="filterItems(this)"
+                                                   onkeydown="searchKeydown(event, this)">
+
                                             <select name="items[{{ $index }}][item_id]"
                                                     class="item-select block w-full rounded-md border-slate-300 px-3 py-1.5 text-xs"
                                                     onchange="updateStock(this)"
@@ -192,6 +199,8 @@
                                             <span class="stock-text rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700">
                                                 -
                                             </span>
+
+                                            <p class="shortage-warning mt-1 max-w-[220px] whitespace-normal text-[10px] font-semibold leading-4 text-amber-700"></p>
                                         </td>
 
                                         <td class="px-4 py-2.5">
@@ -199,6 +208,7 @@
                                                    name="items[{{ $index }}][quantity]"
                                                    min="1"
                                                    value="{{ $oldItem['quantity'] ?? '' }}"
+                                                   oninput="updateStock(this.closest('tr').querySelector('.item-select'))"
                                                    required
                                                    class="w-24 rounded-md border-slate-300 px-3 py-1.5 text-xs">
                                         </td>
@@ -224,7 +234,7 @@
                     </div>
 
                     <div class="rounded-md border border-cyan-100 bg-cyan-50 px-3 py-2 text-[11px] text-cyan-800">
-                        Barang tanpa stok pada lokasi terpilih tidak dapat diajukan.
+                        Jumlah pengajuan boleh melebihi stok. Kekurangan stok dicatat untuk laporan, dan approver hanya dapat menyetujui sebesar stok yang tersedia.
                     </div>
                 </div>
 
@@ -263,41 +273,116 @@
             const row = select.closest('tr');
             const stockText = row.querySelector('.stock-text');
             const quantityInput = row.querySelector('input[type="number"]');
+            const warning = row.querySelector('.shortage-warning');
+
+            // Jumlah tidak dibatasi stok: kekurangan tetap bisa diajukan dan dicatat.
+            quantityInput.removeAttribute('max');
+            warning.textContent = '';
 
             if (!key) {
                 stockText.textContent = 'Pilih lokasi';
                 stockText.className = 'stock-text rounded-md bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700';
-                quantityInput.removeAttribute('max');
                 return;
             }
 
             if (!option || !option.value) {
                 stockText.textContent = '-';
                 stockText.className = 'stock-text rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700';
-                quantityInput.removeAttribute('max');
                 return;
             }
 
             const stocks = JSON.parse(option.getAttribute('data-stocks') || '{}');
             const locationStock = stocks[key];
             const unit = option.getAttribute('data-unit') || '';
+            const requested = Number(quantityInput.value || 0);
 
-            if (!locationStock) {
-                stockText.textContent = 'Belum ada stok';
+            const stock = locationStock ? Number(locationStock.stock || 0) : 0;
+            const minimum = locationStock ? Number(locationStock.minimum || 0) : 0;
+
+            if (!locationStock || stock <= 0) {
+                stockText.textContent = 'Stok kosong';
                 stockText.className = 'stock-text rounded-md bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700';
-                quantityInput.setAttribute('max', '0');
+
+                if (requested > 0) {
+                    warning.textContent = 'Stok kosong. ' + requested + ' ' + unit + ' dicatat sebagai kekurangan.';
+                }
+
                 return;
             }
 
-            const stock = Number(locationStock.stock || 0);
-            const minimum = Number(locationStock.minimum || 0);
-
             stockText.textContent = stock + ' ' + unit + ' | Min: ' + minimum;
-            quantityInput.setAttribute('max', stock);
-
             stockText.className = stock <= minimum
                 ? 'stock-text rounded-md bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700'
                 : 'stock-text rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700';
+
+            if (requested > stock) {
+                warning.textContent = 'Stok hanya ' + stock + ' ' + unit + '. Kekurangan ' + (requested - stock) + ' ' + unit + ' dicatat.';
+            }
+        }
+
+        /*
+         * Pencarian barang: daftar opsi asli disimpan sekali, lalu select
+         * dibangun ulang sesuai kata kunci. Opsi yang sedang dipilih selalu
+         * dipertahankan agar pilihan tidak hilang saat mengetik.
+         */
+        let masterOptions = [];
+
+        function initItemSearch() {
+            const firstSelect = document.querySelector('.item-select');
+
+            masterOptions = Array.from(firstSelect.options).map(function (option) {
+                return option.cloneNode(true);
+            });
+        }
+
+        function filterItems(input) {
+            const select = input.closest('td').querySelector('.item-select');
+            const keyword = input.value.trim().toLowerCase();
+            const selectedValue = select.value;
+            let matches = 0;
+
+            select.innerHTML = '';
+
+            masterOptions.forEach(function (option) {
+                const isPlaceholder = option.value === '';
+                const isSelected = option.value !== '' && option.value === selectedValue;
+                const matched = keyword === '' || option.textContent.toLowerCase().includes(keyword);
+
+                if (isPlaceholder || isSelected || matched) {
+                    const copy = option.cloneNode(true);
+                    copy.selected = isSelected;
+                    select.appendChild(copy);
+
+                    if (!isPlaceholder && matched) {
+                        matches++;
+                    }
+                }
+            });
+
+            select.options[0].textContent = keyword === ''
+                ? '-- Pilih Barang --'
+                : (matches === 0 ? '-- Barang tidak ditemukan --' : '-- ' + matches + ' barang ditemukan --');
+
+            updateStock(select);
+        }
+
+        function searchKeydown(event, input) {
+            if (event.key !== 'Enter') {
+                return;
+            }
+
+            event.preventDefault();
+
+            const select = input.closest('td').querySelector('.item-select');
+            const candidates = Array.from(select.options).filter(function (option) {
+                return option.value !== '';
+            });
+
+            if (candidates.length >= 1) {
+                select.value = candidates[0].value;
+                updateStock(select);
+                input.closest('tr').querySelector('input[type="number"]').focus();
+            }
         }
 
         function refreshAllStocks() {
@@ -320,6 +405,10 @@
                 }
 
                 if (element.tagName === 'SELECT') {
+                    element.innerHTML = '';
+                    masterOptions.forEach(function (option) {
+                        element.appendChild(option.cloneNode(true));
+                    });
                     element.selectedIndex = 0;
                 } else {
                     element.value = '';
@@ -343,6 +432,9 @@
             button.closest('tr').remove();
         }
 
-        document.addEventListener('DOMContentLoaded', refreshAllStocks);
+        document.addEventListener('DOMContentLoaded', function () {
+            initItemSearch();
+            refreshAllStocks();
+        });
     </script>
 </x-app-layout>

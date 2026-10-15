@@ -64,6 +64,7 @@ class DashboardController extends Controller
         if (in_array($user->role, ['super_admin', 'admin', 'approver'])) {
             $lowStockItems = ItemStock::query()
                 ->with(['entity', 'warehouse', 'item.category'])
+                ->whereHas('item', fn ($query) => $query->where('is_active', true))
                 ->when(
                     ! $isSuperAdmin,
                     fn ($query) => $query

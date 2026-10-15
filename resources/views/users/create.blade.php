@@ -70,6 +70,20 @@
                             @endforeach
                         </select>
                     </div>
+
+                    <div class="md:col-span-2">
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Jabatan</label>
+                        <select name="position_id" id="position_id"
+                                class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs">
+                            <option value="">-- Tanpa Jabatan --</option>
+                            @foreach ($positions as $position)
+                                <option value="{{ $position->id }}" @selected((string) old('position_id') === (string) $position->id)>
+                                    {{ $position->name }}{{ $position->is_active ? '' : ' (nonaktif)' }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-[10px] text-slate-500">Dipakai pada alur approval pengajuan custom dan tercetak pada Formulir Pengajuan Barang.</p>
+                    </div>
                 </div>
 
                 <div id="location-access" class="space-y-4">

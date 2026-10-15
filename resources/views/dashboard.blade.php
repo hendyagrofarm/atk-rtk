@@ -166,98 +166,6 @@
     @endphp
 
     <div class="space-y-3">
-        {{-- Compact Summary --}}
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-md bg-[#08B05A] text-white">
-                        <svg class="h-4.5 w-4.5" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M20 7.5 12 3 4 7.5m16 0-8 4.5m8-4.5v9L12 21m0-9L4 7.5m8 4.5v9M4 7.5v9L12 21" />
-                        </svg>
-                    </div>
-
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            Aplikasi
-                        </p>
-                        <p class="truncate text-sm font-bold text-slate-800">
-                            Portal ATK-RTK
-                        </p>
-                        <p class="text-[10px] text-slate-500">
-                            Inventory System
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-md bg-[#F4B400] text-slate-900">
-                        <svg class="h-4.5 w-4.5" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="m9 12 2 2 4-5M12 3.5l7 3v5.5c0 4.5-2.8 7.6-7 8.5-4.2-.9-7-4-7-8.5V6.5l7-3Z" />
-                        </svg>
-                    </div>
-
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            Role Aktif
-                        </p>
-                        <p class="truncate text-sm font-bold uppercase text-slate-800">
-                            {{ $roleLabel }}
-                        </p>
-                        <p class="text-[10px] text-slate-500">
-                            Hak akses pengguna
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-md bg-[#1FA8C9] text-white">
-                        <svg class="h-4.5 w-4.5" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 7.5a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.25a7.5 7.5 0 0 1 15 0" />
-                        </svg>
-                    </div>
-
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            User Aktif
-                        </p>
-                        <p class="truncate text-sm font-bold text-slate-800">
-                            {{ $user->name }}
-                        </p>
-                        <p class="truncate text-[10px] text-slate-500">
-                            {{ $user->email }}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-md bg-[#E74C3C] text-white">
-                        <svg class="h-4.5 w-4.5" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6.5h16M4 12h16M4 17.5h16" />
-                        </svg>
-                    </div>
-
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            Menu Akses
-                        </p>
-                        <p class="truncate text-sm font-bold text-slate-800">
-                            {{ count($quickMenus) }} Menu
-                        </p>
-                        <p class="text-[10px] text-slate-500">
-                            Berdasarkan role akun
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
         {{-- Statistik Operasional --}}
         <div class="grid grid-cols-2 gap-3 xl:grid-cols-5">
             <div class="rounded-md border border-[#D9E1E7] bg-white p-3 shadow-sm">
@@ -289,9 +197,9 @@
         {{-- Main Panel --}}
         <div class="overflow-hidden rounded-md border border-[#D9E1E7] bg-white shadow-sm">
             <div class="border-t-4 border-[#1FA8C9]">
-                <div class="grid grid-cols-1 lg:grid-cols-3">
+                <div>
                     {{-- Left Content --}}
-                    <div class="border-r border-slate-200 p-3 lg:col-span-2">
+                    <div class="p-3">
                         <div class="mb-3 flex items-center justify-between">
                             <div>
                                 <h3 class="text-[13px] font-bold text-slate-800">
@@ -332,122 +240,6 @@
                         </div>
                     </div>
 
-                    {{-- Right Info --}}
-                    <div class="bg-slate-50 p-3">
-                        <div class="mb-3">
-                            <h3 class="text-[13px] font-bold text-slate-800">
-                                Informasi Sistem
-                            </h3>
-                            <p class="text-[10px] text-slate-500">
-                                Detail akun dan akses.
-                            </p>
-                        </div>
-
-                        <div class="space-y-2">
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <div class="flex items-center justify-between">
-                                    <p class="text-[11px] font-semibold text-slate-700">
-                                        Status Sistem
-                                    </p>
-                                    <span class="rounded-full bg-[#08B05A] px-2 py-0.5 text-[10px] font-bold text-white">
-                                        Running
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <p class="text-[11px] font-semibold text-slate-700">
-                                    Aplikasi
-                                </p>
-                                <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                    Portal ATK-RTK
-                                </p>
-                                <p class="text-[10px] text-slate-500">
-                                    Corporate Inventory
-                                </p>
-                            </div>
-
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <p class="text-[11px] font-semibold text-slate-700">
-                                    Pengguna
-                                </p>
-                                <p class="mt-0.5 truncate text-xs font-bold text-slate-800">
-                                    {{ $user->name }}
-                                </p>
-                                <p class="truncate text-[10px] text-slate-500">
-                                    {{ $user->email }}
-                                </p>
-                            </div>
-
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <p class="text-[11px] font-semibold text-slate-700">
-                                    Role
-                                </p>
-                                <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                    {{ $roleLabel }}
-                                </p>
-                                <p class="text-[10px] text-slate-500">
-                                    Hak akses akun
-                                </p>
-                            </div>
-
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <p class="text-[11px] font-semibold text-slate-700">
-                                    Entitas
-                                </p>
-
-                                @if ($role === 'super_admin')
-                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                        Semua Entitas
-                                    </p>
-                                    <p class="text-[10px] text-slate-500">
-                                        Akses tidak dibatasi entitas
-                                    </p>
-                                @else
-                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                        {{ $user->entity?->code ?? 'Belum ditentukan' }}
-                                    </p>
-                                    <p class="truncate text-[10px] text-slate-500">
-                                        {{ $user->entity?->name ?? 'Entitas belum dipilih' }}
-                                    </p>
-                                @endif
-                            </div>
-
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <p class="text-[11px] font-semibold text-slate-700">
-                                    Gudang
-                                </p>
-
-                                @if ($role === 'super_admin')
-                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                        Semua Gudang
-                                    </p>
-                                    <p class="text-[10px] text-slate-500">
-                                        Akses tidak dibatasi gudang
-                                    </p>
-                                @else
-                                    <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                        {{ $user->warehouse?->name ?? 'Belum ditentukan' }}
-                                    </p>
-                                    <p class="text-[10px] text-slate-500">
-                                        {{ $user->warehouse?->code ?? 'Gudang belum dipilih' }}
-                                    </p>
-                                @endif
-                            </div>
-
-                            <div class="rounded-md border border-slate-200 bg-white p-2.5">
-                                <p class="text-[11px] font-semibold text-slate-700">
-                                    Tanggal
-                                </p>
-                                <p class="mt-0.5 text-xs font-bold text-slate-800">
-                                    {{ now()->format('d M Y') }}
-                                </p>
-                                <p class="text-[10px] text-slate-500">
-                                    {{ now()->format('H:i') }}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

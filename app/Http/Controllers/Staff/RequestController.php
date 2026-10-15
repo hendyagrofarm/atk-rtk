@@ -11,6 +11,8 @@ use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Support\ApprovalChain;
+use App\Support\RequestTimeline;
 use Illuminate\Validation\Rule;
 use Throwable;
 
@@ -22,6 +24,7 @@ class RequestController extends Controller
             ->with([
                 'entity',
                 'warehouse',
+                'approvals',
             ])
             ->withCount('details')
             ->where('user_id', Auth::id())
@@ -163,26 +166,13 @@ class RequestController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Pastikan setiap barang memiliki stok pada lokasi yang dipilih
+        | Jumlah pengajuan tidak dibatasi stok lokasi
+        |--------------------------------------------------------------------------
+        | Barang kosong atau belum punya baris stok di lokasi tetap boleh
+        | diajukan. Kekurangannya dicatat pada request_details untuk laporan KPI,
+        | dan approver hanya dapat menyetujui sebesar stok yang tersedia.
         |--------------------------------------------------------------------------
         */
-        foreach ($validated['items'] as $row) {
-            $stockExists = \App\Models\ItemStock::query()
-                ->where('entity_id', $validated['entity_id'])
-                ->where('warehouse_id', $validated['warehouse_id'])
-                ->where('item_id', $row['item_id'])
-                ->exists();
-
-            if (! $stockExists) {
-                return back()
-                    ->withInput()
-                    ->with(
-                        'error',
-                        'Salah satu barang belum mempunyai stok pada entitas dan gudang yang dipilih.'
-                    );
-            }
-        }
-
         try {
             DB::transaction(function () use ($validated, $user) {
                 $pengajuan = Pengajuan::create([
@@ -201,6 +191,16 @@ class RequestController extends Controller
                 ]);
 
                 foreach ($validated['items'] as $item) {
+                    /*
+                     * Catat stok lokasi saat pengajuan dibuat untuk laporan KPI.
+                     * Kekurangan = jumlah diminta yang tidak tertutup stok tersedia.
+                     */
+                    $stockAtRequest = (int) \App\Models\ItemStock::query()
+                        ->where('entity_id', $validated['entity_id'])
+                        ->where('warehouse_id', $validated['warehouse_id'])
+                        ->where('item_id', $item['item_id'])
+                        ->value('current_stock');
+
                     RequestDetail::create([
                         'request_id' => $pengajuan->id,
                         'item_id' => $item['item_id'],
@@ -208,6 +208,8 @@ class RequestController extends Controller
                         'custom_category' => null,
                         'specification' => null,
                         'quantity' => $item['quantity'],
+                        'stock_at_request' => $stockAtRequest,
+                        'shortage_quantity' => max(0, (int) $item['quantity'] - $stockAtRequest),
                         'approved_quantity' => 0,
                         'unit' => null,
                         'estimated_price' => null,
@@ -230,7 +232,7 @@ class RequestController extends Controller
                 ->withInput()
                 ->with(
                     'error',
-                    'Pengajuan gagal dibuat: ' . $e->getMessage()
+                    'Pengajuan gagal dibuat. Silakan periksa data dan coba kembali.'
                 );
         }
     }
@@ -252,9 +254,23 @@ class RequestController extends Controller
             ->orderBy('code')
             ->get();
 
+        // Admin dan super admin boleh mengisi FPB atas nama PIC dari divisi lain.
+        $canSetPic = in_array($user->role, ['super_admin', 'admin'], true);
+
+        $signerSuggestions = \App\Models\User::query()
+            ->with('position')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($person) => [
+                'name' => $person->name,
+                'position' => $person->position?->name ?? '',
+            ])
+            ->values();
+
         return view(
             'staff.requests.create-custom',
-            compact('entities')
+            compact('entities', 'user', 'canSetPic', 'signerSuggestions')
         );
     }
 
@@ -262,6 +278,7 @@ class RequestController extends Controller
     {
         $user = Auth::user();
         $isSuperAdmin = $user->isSuperAdmin();
+        $canSetPic = in_array($user->role, ['super_admin', 'admin'], true);
 
         $validated = $request->validate([
             'entity_id' => [
@@ -273,6 +290,20 @@ class RequestController extends Controller
                 'string',
                 'max:1000',
             ],
+            'department' => [
+                'required',
+                'string',
+                'max:150',
+            ],
+            'pic_name' => [
+                Rule::requiredIf($canSetPic),
+                'nullable',
+                'string',
+                'max:150',
+            ],
+            'pic_position' => ['nullable', 'string', 'max:150'],
+            'superior_name' => ['nullable', 'string', 'max:150'],
+            'superior_position' => ['nullable', 'string', 'max:150'],
             'items' => [
                 'required',
                 'array',
@@ -288,10 +319,24 @@ class RequestController extends Controller
                 'string',
                 'max:255',
             ],
+            'items.*.budget_type' => [
+                'required',
+                Rule::in(['OPEX', 'CAPEX']),
+            ],
             'items.*.specification' => [
                 'nullable',
                 'string',
                 'max:3000',
+            ],
+            'items.*.brand_type' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'items.*.usage_purpose' => [
+                'nullable',
+                'string',
+                'max:1000',
             ],
             'items.*.quantity' => [
                 'required',
@@ -331,7 +376,7 @@ class RequestController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($validated, $user) {
+            DB::transaction(function () use ($validated, $user, $canSetPic) {
                 $estimatedTotal = collect($validated['items'])
                     ->sum(function ($item) {
                         return (int) $item['quantity']
@@ -354,6 +399,14 @@ class RequestController extends Controller
                     'approver_id' => null,
                     'status' => 'pending',
                     'note' => $validated['note'] ?? null,
+                    'department' => $validated['department'],
+                    // Staff selalu menjadi PIC dirinya sendiri; admin dapat menentukan PIC.
+                    'pic_name' => $canSetPic ? trim($validated['pic_name']) : $user->name,
+                    'pic_position' => $canSetPic
+                        ? (filled($validated['pic_position'] ?? null) ? trim($validated['pic_position']) : null)
+                        : $user->position?->name,
+                    'superior_name' => filled($validated['superior_name'] ?? null) ? trim($validated['superior_name']) : null,
+                    'superior_position' => filled($validated['superior_position'] ?? null) ? trim($validated['superior_position']) : null,
                     'estimated_total' => $estimatedTotal,
                     'approver_note' => null,
                     'approved_at' => null,
@@ -365,7 +418,10 @@ class RequestController extends Controller
                         'item_id' => null,
                         'custom_item_name' => $item['custom_item_name'],
                         'custom_category' => $item['custom_category'] ?? null,
+                        'budget_type' => $item['budget_type'],
                         'specification' => $item['specification'] ?? null,
+                        'brand_type' => $item['brand_type'] ?? null,
+                        'usage_purpose' => $item['usage_purpose'] ?? null,
                         'quantity' => $item['quantity'],
                         'approved_quantity' => 0,
                         'unit' => $item['unit'],
@@ -374,6 +430,8 @@ class RequestController extends Controller
                         'note' => $item['note'] ?? null,
                     ]);
                 }
+
+                ApprovalChain::initialize($pengajuan);
             });
 
             return redirect()
@@ -389,7 +447,7 @@ class RequestController extends Controller
                 ->withInput()
                 ->with(
                     'error',
-                    'Pengajuan custom gagal dibuat: ' . $e->getMessage()
+                    'Pengajuan custom gagal dibuat. Silakan periksa data dan coba kembali.'
                 );
         }
     }
@@ -403,15 +461,19 @@ class RequestController extends Controller
                 'details.item.category',
                 'details.item.itemStocks.entity',
                 'details.item.itemStocks.warehouse',
-                'user',
-                'approver',
+                'user.position',
+                'approver.position',
+                'approvals.user.position',
             ])
             ->where('user_id', Auth::id())
             ->findOrFail($id);
 
         return view(
             'staff.requests.show',
-            compact('request')
+            [
+                'request' => $request,
+                'events' => RequestTimeline::events($request),
+            ]
         );
     }
 

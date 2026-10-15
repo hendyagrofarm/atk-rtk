@@ -1,9 +1,14 @@
 <?php
 
 use App\Http\Controllers\ApprovalController;
+use App\Http\Controllers\ApprovalStepController;
+use App\Http\Controllers\PositionController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EntityController;
+use App\Http\Controllers\FpbController;
 use App\Http\Controllers\ItemController;
+use App\Http\Controllers\KpiReportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\Staff\RequestController as StaffRequestController;
@@ -36,9 +41,7 @@ Route::get('/', function () {
 | Dashboard umum
 |--------------------------------------------------------------------------
 */
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
 
 /*
@@ -54,6 +57,22 @@ Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
         '/entities/{entity}/toggle-status',
         [EntityController::class, 'toggleStatus']
     )->name('entities.toggle-status');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Jabatan dan Alur Approval Pengajuan Custom
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('positions', PositionController::class)
+        ->only(['index', 'store', 'update', 'destroy']);
+
+    Route::resource('approval-steps', ApprovalStepController::class)
+        ->only(['index', 'store', 'update', 'destroy']);
+
+    Route::patch(
+        '/approval-steps/{approvalStep}/move',
+        [ApprovalStepController::class, 'move']
+    )->name('approval-steps.move');
 });
 
 /*
@@ -151,6 +170,12 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->group(functio
     Route::get('/reports/stock-out/export-excel', [ReportController::class, 'exportStockOutExcel'])
         ->name('reports.stock-out.export-excel');
 
+    Route::get('/reports/kpi', [KpiReportController::class, 'index'])
+        ->name('reports.kpi');
+
+    Route::get('/reports/kpi/export-excel', [KpiReportController::class, 'exportExcel'])
+        ->name('reports.kpi.export-excel');
+
     Route::get(
         '/reports/stock-transfers',
         [StockTransferReportController::class, 'index']
@@ -177,17 +202,7 @@ Route::middleware(['auth', 'verified', 'role:staff'])
     ->group(function () {
         /*
         |--------------------------------------------------------------------------
-        | Daftar Pengajuan
-        |--------------------------------------------------------------------------
-        */
-        Route::get(
-            '/requests',
-            [StaffRequestController::class, 'index']
-        )->name('requests.index');
-
-        /*
-        |--------------------------------------------------------------------------
-        | Pengajuan dari Stok
+        | Pengajuan dari Stok (khusus staff)
         |--------------------------------------------------------------------------
         */
         Route::get(
@@ -199,12 +214,24 @@ Route::middleware(['auth', 'verified', 'role:staff'])
             '/requests',
             [StaffRequestController::class, 'store']
         )->name('requests.store');
+    });
 
-        /*
-        |--------------------------------------------------------------------------
-        | Pengajuan Baru / Custom
-        |--------------------------------------------------------------------------
-        */
+/*
+|--------------------------------------------------------------------------
+| Daftar Pengajuan dan Pengajuan Baru / Custom (FPB)
+|--------------------------------------------------------------------------
+| Staff mengajukan untuk dirinya sendiri. Admin dan super admin dapat
+| membuat pengajuan custom atas nama PIC dari divisi lain.
+*/
+Route::middleware(['auth', 'verified', 'role:staff,admin,super_admin'])
+    ->prefix('staff')
+    ->name('staff.')
+    ->group(function () {
+        Route::get(
+            '/requests',
+            [StaffRequestController::class, 'index']
+        )->name('requests.index');
+
         Route::get(
             '/requests/custom/create',
             [StaffRequestController::class, 'createCustom']
@@ -260,6 +287,18 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin,approver'])
         Route::post('/{approval}/reject', [ApprovalController::class, 'reject'])
             ->name('reject');
     });
+
+/*
+|--------------------------------------------------------------------------
+| Cetak Formulir Pengajuan Barang (FPB) - pengajuan custom
+|--------------------------------------------------------------------------
+| Hak akses diperiksa di FpbController: pemohon, super admin, pihak yang
+| berada pada alur approval, atau admin/approver dengan akses lokasi.
+*/
+Route::get('/fpb/{pengajuan}', [FpbController::class, 'print'])
+    ->middleware(['auth', 'verified'])
+    ->whereNumber('pengajuan')
+    ->name('fpb.print');
 
 /*
 |--------------------------------------------------------------------------

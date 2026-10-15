@@ -11,10 +11,19 @@
                 </p>
             </div>
 
-            <a href="{{ route('staff.requests.create') }}"
-               class="inline-flex items-center rounded-md bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-800">
-                Buat Pengajuan
-            </a>
+            <div class="flex flex-wrap gap-2">
+                @if (auth()->user()->role === 'staff')
+                    <a href="{{ route('staff.requests.create') }}"
+                       class="inline-flex items-center rounded-md bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-800">
+                        Buat Pengajuan
+                    </a>
+                @endif
+
+                <a href="{{ route('staff.requests.custom.create') }}"
+                   class="inline-flex items-center rounded-md bg-sky-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-sky-800">
+                    Pengajuan Custom (FPB)
+                </a>
+            </div>
         </div>
     </x-slot>
 
@@ -112,6 +121,18 @@
                                     <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {{ $statusClass }}">
                                         {{ $statusText }}
                                     </span>
+
+                                    @php
+                                        $progress = \App\Support\RequestTimeline::summary($request);
+                                    @endphp
+
+                                    <p class="mt-1 text-[10px] font-medium leading-3 {{ $progress['state'] === 'rejected' ? 'text-red-600' : ($progress['state'] === 'done' ? 'text-emerald-700' : 'text-amber-700') }}">
+                                        {{ $progress['label'] }}
+                                    </p>
+
+                                    @if ($progress['time'])
+                                        <p class="text-[9px] leading-3 text-slate-400">{{ $progress['time'] }}</p>
+                                    @endif
                                 </td>
 
                                 <td class="px-4 py-2.5 text-center">

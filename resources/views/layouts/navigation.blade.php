@@ -195,6 +195,54 @@
                                 </a>
                             @endif
 
+                            @if ($userRole === 'super_admin')
+                                <a
+                                    href="{{ route('positions.index') }}"
+                                    class="{{ $navItemClass(request()->routeIs('positions.*')) }}"
+                                >
+                                    <svg
+                                        class="h-[17px] w-[17px] shrink-0"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.25a7.5 7.5 0 0 1 15 0M9 14.25l3 1.5 3-1.5"
+                                        />
+                                    </svg>
+
+                                    <span class="truncate">
+                                        Master Jabatan
+                                    </span>
+                                </a>
+
+                                <a
+                                    href="{{ route('approval-steps.index') }}"
+                                    class="{{ $navItemClass(request()->routeIs('approval-steps.*')) }}"
+                                >
+                                    <svg
+                                        class="h-[17px] w-[17px] shrink-0"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M9 12.75 11.25 15 15 9.75M12 3v2.25m0 13.5V21M5.25 12H3m18 0h-2.25"
+                                        />
+                                    </svg>
+
+                                    <span class="truncate">
+                                        Alur Approval
+                                    </span>
+                                </a>
+                            @endif
+
                             <a
                                 href="{{ route('categories.index') }}"
                                 class="{{ $navItemClass(request()->routeIs('categories.*')) }}"
@@ -339,6 +387,66 @@
 
                                 <span class="truncate">
                                     Laporan
+                                </span>
+                            </a>
+                        </div>
+                    </div>
+                @endif
+
+                {{-- Menu FPB untuk admin: mengisi pengajuan custom atas nama PIC --}}
+                @if (in_array($userRole, ['super_admin', 'admin']))
+                    <div>
+                        <p class="mb-1 px-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                            Pengajuan FPB
+                        </p>
+
+                        <div class="space-y-1">
+                            <a
+                                href="{{ route('staff.requests.custom.create') }}"
+                                class="{{ $navItemClass(request()->routeIs('staff.requests.custom.*')) }}"
+                            >
+                                <svg
+                                    class="h-[17px] w-[17px] shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M12 5v14m7-7H5"
+                                    />
+                                </svg>
+
+                                <span class="truncate">
+                                    Buat FPB Custom
+                                </span>
+                            </a>
+
+                            <a
+                                href="{{ route('staff.requests.index') }}"
+                                class="{{ $navItemClass(
+                                    request()->routeIs('staff.requests.index')
+                                    || request()->routeIs('staff.requests.show')
+                                ) }}"
+                            >
+                                <svg
+                                    class="h-[17px] w-[17px] shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M8 7h8M8 11h8M8 15h5M6 3.5h12A1.5 1.5 0 0 1 19.5 5v14A1.5 1.5 0 0 1 18 20.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5Z"
+                                    />
+                                </svg>
+
+                                <span class="truncate">
+                                    Daftar FPB Saya
                                 </span>
                             </a>
                         </div>
