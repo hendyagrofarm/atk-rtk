@@ -34,6 +34,7 @@
         @endif
 
         <form method="POST" action="{{ route('users.store') }}"
+              enctype="multipart/form-data"
               class="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
             @csrf
 
@@ -83,6 +84,16 @@
                             @endforeach
                         </select>
                         <p class="mt-1 text-[10px] text-slate-500">Dipakai pada alur approval pengajuan custom dan tercetak pada Formulir Pengajuan Barang.</p>
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">Tanda Tangan Digital (PNG)</label>
+                        <input type="file" name="signature" accept="image/png"
+                               class="block w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-[11px] file:font-semibold">
+                        @error('signature')
+                            <p class="mt-1 text-[10px] text-red-600">{{ $message }}</p>
+                        @enderror
+                        <p class="mt-1 text-[10px] text-slate-500">Format PNG (disarankan latar transparan), maksimal 1 MB. Tercetak pada FPB setelah user ini menyetujui sebuah tahap.</p>
                     </div>
                 </div>
 

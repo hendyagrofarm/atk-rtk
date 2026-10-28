@@ -80,6 +80,18 @@ class FpbSignersTest extends TestCase
         ], $override);
     }
 
+    /**
+     * Setujui semua tahap (Spv. GA lalu Manager HCGA) agar FPB bisa dicetak.
+     */
+    private function selesaikan(Pengajuan $pengajuan): void
+    {
+        foreach ([$this->spvUser, $this->managerUser] as $penyetuju) {
+            $this->actingAs($penyetuju)
+                ->post(route('approvals.approve', $pengajuan))
+                ->assertRedirect(route('approvals.index'));
+        }
+    }
+
     private function buatSebagaiAdmin(array $override = []): Pengajuan
     {
         $this->actingAs($this->admin)
@@ -184,6 +196,7 @@ class FpbSignersTest extends TestCase
     public function test_cetak_fpb_memiliki_empat_kotak_tanda_tangan(): void
     {
         $pengajuan = $this->buatSebagaiAdmin();
+        $this->selesaikan($pengajuan);
 
         $html = $this->actingAs($this->admin)->get(route('fpb.print', $pengajuan))->assertOk()->getContent();
 
@@ -203,6 +216,7 @@ class FpbSignersTest extends TestCase
     public function test_cetak_fpb_memakai_nama_pic_bukan_nama_admin_pembuat(): void
     {
         $pengajuan = $this->buatSebagaiAdmin();
+        $this->selesaikan($pengajuan);
 
         $this->actingAs($this->admin)
             ->get(route('fpb.print', $pengajuan))
@@ -212,29 +226,31 @@ class FpbSignersTest extends TestCase
             ->assertDontSee('Admin GA');
     }
 
-    public function test_nama_atasan_tercetak_tanpa_tanggal_dan_penyetuju_digital_menyusul(): void
+    public function test_atasan_manual_tercetak_tanpa_tanggal_dan_penyetuju_digital_lengkap_setelah_selesai(): void
     {
         $pengajuan = $this->buatSebagaiAdmin();
 
-        $html = $this->actingAs($this->admin)->get(route('fpb.print', $pengajuan))->getContent();
-
-        // PIC dan atasan langsung tercetak sejak awal; Spv. GA dan Manager masih kosong.
-        $this->assertStringContainsString('Wachidyah Romadhoni', $html);
-        $this->assertStringNotContainsString('Yudi Ardiyanto', $html);
-        $this->assertStringNotContainsString('Muhammad Rudi', $html);
-
-        $this->actingAs($this->spvUser)->post(route('approvals.approve', $pengajuan));
-
+        // Selama belum selesai, FPB belum bisa dicetak.
         $this->actingAs($this->admin)
             ->get(route('fpb.print', $pengajuan))
-            ->assertSee('Yudi Ardiyanto')
-            ->assertSee(now()->format('d/m/Y'))
-            ->assertDontSee('Muhammad Rudi');
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->selesaikan($pengajuan);
+
+        $html = $this->actingAs($this->admin)->get(route('fpb.print', $pengajuan))->assertOk()->getContent();
+
+        // Atasan manual (tanpa akun) tercetak tanpa tanggal; penyetuju digital lengkap.
+        $this->assertStringContainsString('Wachidyah Romadhoni', $html);
+        $this->assertStringContainsString('Yudi Ardiyanto', $html);
+        $this->assertStringContainsString('Muhammad Rudi', $html);
+        $this->assertStringContainsString(now()->format('d/m/Y'), $html);
     }
 
     public function test_atasan_kosong_tetap_menyediakan_kotak_untuk_tanda_tangan(): void
     {
         $pengajuan = $this->buatSebagaiAdmin(['superior_name' => '', 'superior_position' => '']);
+        $this->selesaikan($pengajuan);
 
         $html = $this->actingAs($this->admin)->get(route('fpb.print', $pengajuan))->getContent();
 
@@ -314,6 +330,7 @@ class FpbSignersTest extends TestCase
     public function test_cetak_fpb_dari_akun_staff_memiliki_empat_kotak_tanda_tangan(): void
     {
         [$staff, $pengajuan] = $this->buatSebagaiStaff();
+        $this->selesaikan($pengajuan);
 
         $html = $this->actingAs($staff)->get(route('fpb.print', $pengajuan))->assertOk()->getContent();
         $kotak = $this->bacaKotakTandaTangan($html);
@@ -336,6 +353,12 @@ class FpbSignersTest extends TestCase
         [$staff, $pengajuan] = $this->buatSebagaiStaff();
         $this->assertCount(0, $pengajuan->approvals);
 
+        // Tanpa alur bertingkat: satu approver menyetujui, baru FPB bisa dicetak.
+        $approver = $this->makeUser('approver', 'Approver Lokasi', null, $this->gudang);
+        $this->actingAs($approver)->post(route('approvals.approve', $pengajuan), [
+            'approved_quantity' => [$pengajuan->details()->first()->id => 2],
+        ])->assertRedirect(route('approvals.index'));
+
         $html = $this->actingAs($staff)->get(route('fpb.print', $pengajuan))->assertOk()->getContent();
         $kotak = $this->bacaKotakTandaTangan($html);
 
@@ -353,8 +376,10 @@ class FpbSignersTest extends TestCase
         [$staff, $pengajuan] = $this->buatSebagaiStaff();
         $detail = $pengajuan->details()->firstOrFail();
 
-        $sebelum = $this->actingAs($staff)->get(route('fpb.print', $pengajuan))->getContent();
-        $this->assertStringNotContainsString('Muhammad Rudi', $sebelum);
+        $this->actingAs($staff)
+            ->get(route('fpb.print', $pengajuan))
+            ->assertRedirect()
+            ->assertSessionHas('error');
 
         $approver = $this->makeUser('approver', 'Muhammad Rudi', $this->manager, $this->gudang);
         $this->actingAs($approver)->post(route('approvals.approve', $pengajuan), [
@@ -373,6 +398,7 @@ class FpbSignersTest extends TestCase
     public function test_staff_tanpa_atasan_tetap_mendapat_empat_kotak(): void
     {
         [$staff, $pengajuan] = $this->buatSebagaiStaff('');
+        $this->selesaikan($pengajuan);
 
         $kotak = $this->bacaKotakTandaTangan(
             $this->actingAs($staff)->get(route('fpb.print', $pengajuan))->getContent()
@@ -385,6 +411,7 @@ class FpbSignersTest extends TestCase
     public function test_pengajuan_custom_lama_tanpa_data_penandatangan_tetap_tercetak(): void
     {
         $pengajuan = $this->buatSebagaiAdmin();
+        $this->selesaikan($pengajuan);
         $pengajuan->update(['pic_name' => null, 'pic_position' => null, 'superior_name' => null, 'superior_position' => null]);
 
         $this->actingAs($this->admin)

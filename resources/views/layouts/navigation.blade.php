@@ -321,6 +321,29 @@
                             </a>
 
                             <a
+                                href="{{ route('stock-outs.index') }}"
+                                class="{{ $navItemClass(request()->routeIs('stock-outs.*')) }}"
+                            >
+                                <svg
+                                    class="h-[17px] w-[17px] shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M12 20V10m0 0 4 4m-4-4-4 4M4 7.5V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1.5"
+                                    />
+                                </svg>
+
+                                <span class="truncate">
+                                    Barang Keluar
+                                </span>
+                            </a>
+
+                            <a
                                 href="{{ route('stock-transfers.index') }}"
                                 class="{{ $navItemClass(request()->routeIs('stock-transfers.*')) }}"
                             >
@@ -449,6 +472,29 @@
                                     Daftar FPB Saya
                                 </span>
                             </a>
+
+                            <a
+                                href="{{ route('fulfillments.index') }}"
+                                class="{{ $navItemClass(request()->routeIs('fulfillments.*')) }}"
+                            >
+                                <svg
+                                    class="h-[17px] w-[17px] shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M3 7.5 12 3l9 4.5M3 7.5v9L12 21l9-4.5v-9M3 7.5l9 4.5m9-4.5-9 4.5m0 9v-9"
+                                    />
+                                </svg>
+
+                                <span class="truncate">
+                                    Pembelanjaan &amp; BAST
+                                </span>
+                            </a>
                         </div>
                     </div>
                 @endif
@@ -549,8 +595,11 @@
                     </div>
                 @endif
 
-                {{-- Approval Admin dan Approver --}}
-                @if (in_array($userRole, ['super_admin', 'admin', 'approver']))
+                {{-- Approval: admin, approver, dan akun staff yang ditunjuk sebagai penyetuju (atasan langsung atau jabatan tahap) --}}
+                @if (
+                    in_array($userRole, ['super_admin', 'admin', 'approver'])
+                    || ($userRole === 'staff' && \App\Support\ApprovalChain::isParticipantAnywhere(Auth::user()))
+                )
                     <div>
                         <p class="mb-1 px-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">
                             Approval

@@ -491,7 +491,32 @@ class ReportController extends Controller
             fn ($requestItem) => $requestItem->details->sum('approved_quantity')
         );
 
+        // Pengeluaran langsung oleh admin (tanpa pengajuan) ikut dilaporkan.
+        $directOuts = \App\Models\StockOut::query()
+            ->visibleTo($user)
+            ->filtered([
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date,
+                'entity_id' => $entityId,
+                'warehouse_id' => $warehouseId,
+                'category_id' => $request->category_id,
+                'issuer_id' => $request->user_id,
+            ], $user)
+            ->with(['entity', 'warehouse', 'issuer', 'items.item.category'])
+            ->latest('issue_date')
+            ->latest('id')
+            ->get();
+
+        $totalDirectOuts = $directOuts->count();
+        $totalDirectUnits = $directOuts->sum(fn ($out) => $out->items
+            ->filter(fn ($line) => ! $request->filled('category_id')
+                || (int) $line->item?->category_id === (int) $request->category_id)
+            ->sum('quantity'));
+
         return view('reports.stock-out', compact(
+            'directOuts',
+            'totalDirectOuts',
+            'totalDirectUnits',
             'requests',
             'categories',
             'entities',

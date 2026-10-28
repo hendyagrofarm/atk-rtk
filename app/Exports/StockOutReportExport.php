@@ -85,6 +85,48 @@ class StockOutReportExport implements FromCollection, WithHeadings, WithCustomSt
             }
         }
 
+        // Pengeluaran langsung oleh admin ditampilkan pada sheet yang sama.
+        $directOuts = \App\Models\StockOut::query()
+            ->visibleTo($user)
+            ->filtered([
+                'start_date' => $this->request->start_date,
+                'end_date' => $this->request->end_date,
+                'entity_id' => $entityId,
+                'warehouse_id' => $warehouseId,
+                'category_id' => $this->request->category_id,
+                'issuer_id' => $this->request->user_id,
+            ], $user)
+            ->with(['entity', 'warehouse', 'issuer', 'items.item.category'])
+            ->latest('issue_date')
+            ->latest('id')
+            ->get();
+
+        foreach ($directOuts as $directOut) {
+            foreach ($directOut->items as $line) {
+                if ($this->request->filled('category_id')
+                    && (int) $line->item?->category_id !== (int) $this->request->category_id) {
+                    continue;
+                }
+
+                $rows->push([
+                    ++$this->rowNumber,
+                    $directOut->issue_number,
+                    $directOut->entity?->code ?? '-',
+                    $directOut->warehouse?->name ?? '-',
+                    $directOut->warehouse?->code ?? '-',
+                    $directOut->issue_date?->format('d/m/Y') ?? '-',
+                    $directOut->recipient_name . ($directOut->recipient_department ? ' (' . $directOut->recipient_department . ')' : ''),
+                    $line->item?->code ?? '-',
+                    $line->item?->name ?? '-',
+                    $line->item?->category?->name ?? '-',
+                    $line->item?->unit ?? '-',
+                    (int) $line->quantity,
+                    ($directOut->issuer?->name ?? '-') . ' (langsung)',
+                    $directOut->note ?: 'Pengeluaran langsung tanpa pengajuan',
+                ]);
+            }
+        }
+
         return $rows;
     }
 

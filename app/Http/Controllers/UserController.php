@@ -4,12 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\Entity;
 use App\Models\Position;
+use App\Support\SignatureStore;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Throwable;
 
 class UserController extends Controller
@@ -133,9 +138,10 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateUser($request);
+        $signature = $this->validatedSignature($request);
 
         try {
-            DB::transaction(function () use ($request, $validated) {
+            DB::transaction(function () use ($request, $validated, $signature) {
                 $isSuperAdmin = $validated['role'] === 'super_admin';
 
                 $entityIds = $isSuperAdmin
@@ -182,6 +188,10 @@ class UserController extends Controller
 
                 $user->entities()->sync($entityIds);
                 $user->warehouses()->sync($warehouseIds);
+
+                if ($signature) {
+                    SignatureStore::store($user, $signature);
+                }
             });
 
             return redirect()
@@ -254,6 +264,7 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $validated = $this->validateUser($request, $user);
+        $signature = $this->validatedSignature($request);
 
         if (
             $user->id === Auth::id()
@@ -274,7 +285,7 @@ class UserController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($request, $validated, $user) {
+            DB::transaction(function () use ($request, $validated, $user, $signature) {
                 $isSuperAdmin = $validated['role'] === 'super_admin';
 
                 $entityIds = $isSuperAdmin
@@ -325,6 +336,14 @@ class UserController extends Controller
                 $user->update($data);
                 $user->entities()->sync($entityIds);
                 $user->warehouses()->sync($warehouseIds);
+
+                if ($request->boolean('remove_signature')) {
+                    SignatureStore::delete($user);
+                }
+
+                if ($signature) {
+                    SignatureStore::store($user, $signature);
+                }
             });
 
             return redirect()
@@ -414,6 +433,39 @@ class UserController extends Controller
             ->with('success', 'User berhasil diaktifkan kembali.');
     }
 
+    /**
+     * Tampilkan tanda tangan user (khusus admin dan super admin).
+     */
+    public function signature(User $user)
+    {
+        abort_unless(SignatureStore::userHasSignature($user), 404);
+
+        return response()->file(
+            Storage::disk(SignatureStore::DISK)->path($user->signature_path),
+            ['Content-Type' => 'image/png', 'Cache-Control' => 'private, no-store']
+        );
+    }
+
+    /**
+     * Pastikan berkas tanda tangan benar-benar PNG yang valid dan tidak terlalu besar.
+     */
+    private function validatedSignature(Request $request): ?UploadedFile
+    {
+        $file = $request->file('signature');
+
+        if (! $file) {
+            return null;
+        }
+
+        try {
+            SignatureStore::assertValidPng($file);
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['signature' => $e->getMessage()]);
+        }
+
+        return $file;
+    }
+
     private function validateUser(Request $request, ?User $user = null): array
     {
         $isSuperAdmin = $request->input('role') === 'super_admin';
@@ -476,8 +528,12 @@ class UserController extends Controller
                     'confirmed',
                 ],
                 'is_active' => ['nullable', 'boolean'],
+                'signature' => ['nullable', 'file', 'mimes:png', 'max:' . SignatureStore::MAX_KILOBYTES],
+                'remove_signature' => ['nullable', 'boolean'],
             ],
             [
+                'signature.mimes' => 'Tanda tangan harus berformat PNG.',
+                'signature.max' => 'Ukuran file tanda tangan maksimal 1 MB.',
                 'name.required' => 'Nama user wajib diisi.',
                 'email.required' => 'Email user wajib diisi.',
                 'email.email' => 'Format email tidak valid.',

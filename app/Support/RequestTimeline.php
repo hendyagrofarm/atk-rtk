@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Request as Pengajuan;
 use App\Models\RequestApproval;
+use App\Models\RequestFulfillment;
 use Carbon\CarbonInterface;
 
 /**
@@ -27,7 +28,9 @@ class RequestTimeline
             'user.position',
             'approver.position',
             'approvals.user.position',
+            'approvals.assignedUser',
             'details',
+            'fulfillments.user',
         ]);
 
         $events = [self::createdEvent($request)];
@@ -36,6 +39,10 @@ class RequestTimeline
             array_push($events, ...self::chainEvents($request));
         } else {
             array_push($events, ...self::singleStepEvents($request));
+        }
+
+        if (Fulfillment::applies($request)) {
+            array_push($events, ...self::fulfillmentEvents($request));
         }
 
         // Terbaru di atas, seperti pelacakan paket.
@@ -53,6 +60,23 @@ class RequestTimeline
     public static function summary(Pengajuan $request): array
     {
         $request->loadMissing(['approvals']);
+
+        if (Fulfillment::applies($request)) {
+            $request->loadMissing('fulfillments');
+            $last = $request->fulfillments->last();
+
+            if ($last) {
+                return [
+                    'label' => $last->stage === RequestFulfillment::RECEIVED
+                        ? 'Barang sudah diterima pengguna'
+                        : $last->stage_label,
+                    'time' => self::formatTime($last->happened_at),
+                    'state' => $last->stage === RequestFulfillment::RECEIVED ? 'done' : 'current',
+                ];
+            }
+
+            return ['label' => 'Disetujui, menunggu proses pembelian', 'time' => self::formatTime($request->approved_at), 'state' => 'current'];
+        }
 
         if ($request->status === 'approved') {
             return ['label' => 'Pengajuan disetujui', 'time' => self::formatTime($request->approved_at), 'state' => 'done'];
@@ -153,7 +177,9 @@ class RequestTimeline
                 $events[] = [
                     'state' => 'current',
                     'title' => 'Sedang diproses oleh ' . $step->position_name,
-                    'detail' => 'Menunggu ' . lcfirst($step->label) . ' (tahap ' . $step->step_order . ' dari ' . $total . ')'
+                    'detail' => 'Menunggu ' . lcfirst($step->label)
+                        . ($step->assignedUser ? ' ' . $step->assignedUser->name : '')
+                        . ' (tahap ' . $step->step_order . ' dari ' . $total . ')'
                         . ($upcoming->isNotEmpty() ? '. Berikutnya: ' . $upcoming->implode(', ') : ''),
                     'at' => null,
                 ];
@@ -214,6 +240,70 @@ class RequestTimeline
             'detail' => 'Pengajuan sedang menunggu diproses approver',
             'at' => null,
         ]];
+    }
+
+    /**
+     * Kejadian pembelanjaan sampai barang diterima, plus tahap berikutnya yang ditunggu.
+     */
+    private static function fulfillmentEvents(Pengajuan $request): array
+    {
+        $events = [];
+
+        foreach ($request->fulfillments as $row) {
+            $parts = [];
+            $parts[] = ($row->stage === RequestFulfillment::RECEIVED ? 'Dikonfirmasi oleh ' : 'Oleh ') . ($row->user?->name ?? '-');
+
+            if ($row->vendor) {
+                $parts[] = 'Vendor: ' . $row->vendor;
+            }
+            if ($row->po_number) {
+                $parts[] = 'No. PO: ' . $row->po_number;
+            }
+            if ($row->eta_date) {
+                $parts[] = 'Estimasi tiba: ' . $row->eta_date->format('d-m-Y');
+            }
+            if ($row->stage === RequestFulfillment::HANDED_OVER && $request->bast_number) {
+                $parts[] = 'No. BAST: ' . $request->bast_number;
+            }
+            if ($row->note) {
+                $parts[] = 'Catatan: ' . $row->note;
+            }
+
+            $events[] = [
+                'state' => 'done',
+                'title' => $row->stage_label,
+                'detail' => implode(' | ', $parts),
+                'at' => $row->happened_at,
+            ];
+        }
+
+        if (Fulfillment::isComplete($request)) {
+            return $events;
+        }
+
+        if (Fulfillment::isAwaitingReceipt($request)) {
+            $events[] = [
+                'state' => 'current',
+                'title' => 'Menunggu konfirmasi penerimaan',
+                'detail' => 'Menunggu ' . ($request->received_name ?: $request->receiverName() ?: 'penerima') . ' mengonfirmasi barang diterima',
+                'at' => null,
+            ];
+
+            return $events;
+        }
+
+        $next = Fulfillment::nextAdminStage($request);
+
+        $events[] = [
+            'state' => 'current',
+            'title' => $next === RequestFulfillment::PURCHASING
+                ? 'Menunggu proses pembelian'
+                : 'Menunggu: ' . (RequestFulfillment::STAGES[$next] ?? '-'),
+            'detail' => 'Menunggu diperbarui oleh admin',
+            'at' => null,
+        ];
+
+        return $events;
     }
 
     private static function actor(RequestApproval $step, string $prefix = 'Disetujui oleh '): string

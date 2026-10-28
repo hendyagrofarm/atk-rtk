@@ -12,21 +12,31 @@ use RuntimeException;
 /**
  * Alur approval bertingkat untuk pengajuan custom (Formulir Pengajuan Barang).
  *
+ * Urutan tahap pada sebuah pengajuan:
+ * 1. Atasan langsung (jika dipilih dari user sistem): tahap yang ditunjuk ke satu
+ *    user tertentu, "Diketahui oleh".
+ * 2. Tahap tetap dari pengaturan Alur Approval, misalnya Spv. GA lalu Manager HCGA.
+ *
  * Aturan:
  * - Tahap berjalan berurutan; hanya tahap pending pertama yang bisa diproses.
- * - Yang boleh memproses tahap: user dengan jabatan tahap itu (dan akses entitas
- *   pengajuan), atau super admin. Pembuat pengajuan tidak boleh memproses
+ * - Tahap atasan langsung hanya bisa diproses user yang ditunjuk. Tahap tetap bisa
+ *   diproses user dengan jabatan tahap itu (dan akses entitas pengajuan). Super admin
+ *   dapat memproses tahap mana pun. Pembuat pengajuan tidak boleh memproses
  *   pengajuannya sendiri, kecuali super admin.
  * - Tahap terakhir yang disetujui menyelesaikan pengajuan. Jumlah disetujui
  *   per barang ditetapkan pada tahap terakhir.
+ * - Saat disetujui, tanda tangan digital penyetuju disalin ke tahap itu (jika ada).
  * - Penolakan di tahap mana pun menghentikan alur; tahap sesudahnya ditandai skipped.
- * - Jika tidak ada tahap aktif yang dikonfigurasi, pengajuan memakai approval
- *   satu tahap seperti sebelumnya.
+ * - Jika tidak ada tahap sama sekali, pengajuan memakai approval satu tahap seperti
+ *   sebelumnya.
  */
 class ApprovalChain
 {
+    public const SUPERIOR_LABEL = 'Diketahui oleh';
+    public const SUPERIOR_FALLBACK_POSITION = 'Atasan Langsung';
+
     /**
-     * Salin pengaturan tahap aktif ke pengajuan baru.
+     * Salin tahap ke pengajuan baru: atasan langsung lebih dulu, lalu tahap tetap.
      */
     public static function initialize(Pengajuan $request): void
     {
@@ -34,17 +44,40 @@ class ApprovalChain
             return;
         }
 
+        $order = 0;
+
+        $superior = $request->superior_user_id
+            ? User::query()->with('position')->find($request->superior_user_id)
+            : null;
+
+        if ($superior) {
+            RequestApproval::create([
+                'request_id' => $request->id,
+                'step_order' => ++$order,
+                'label' => self::SUPERIOR_LABEL,
+                'position_id' => null,
+                'position_name' => filled($request->superior_position)
+                    ? $request->superior_position
+                    : ($superior->position?->name ?? self::SUPERIOR_FALLBACK_POSITION),
+                'assigned_user_id' => $superior->id,
+                'status' => RequestApproval::PENDING,
+            ]);
+        }
+
         $steps = ApprovalStep::query()
             ->active()
             ->ordered()
             ->with('position')
             ->get()
-            ->filter(fn (ApprovalStep $step) => $step->position !== null);
+            ->filter(fn (ApprovalStep $step) => $step->position !== null)
+            // Atasan langsung sudah menjadi tahap tersendiri; tahap tetap bernama sama
+            // (peninggalan pengaturan lama) dilewati agar persetujuan tidak dobel.
+            ->reject(fn (ApprovalStep $step) => $superior && ApprovalStep::isSuperiorPosition($step->position->name));
 
-        foreach ($steps->values() as $index => $step) {
+        foreach ($steps as $step) {
             RequestApproval::create([
                 'request_id' => $request->id,
-                'step_order' => $index + 1,
+                'step_order' => ++$order,
                 'label' => $step->label,
                 'position_id' => $step->position_id,
                 'position_name' => $step->position->name,
@@ -89,13 +122,58 @@ class ApprovalChain
             return false;
         }
 
+        // Tahap yang ditunjuk ke user tertentu (atasan langsung).
+        if ($step->assigned_user_id !== null) {
+            return (int) $step->assigned_user_id === (int) $user->id;
+        }
+
         return $step->position_id !== null
             && (int) $user->position_id === (int) $step->position_id
             && $user->canAccessEntity($request->entity_id);
     }
 
     /**
+     * Apakah user terlibat sebagai penyetuju pada salah satu tahap pengajuan ini.
+     */
+    public static function isParticipant(User $user, Pengajuan $request): bool
+    {
+        return $request->approvals->contains(function (RequestApproval $step) use ($user, $request) {
+            if ($step->assigned_user_id !== null) {
+                return (int) $step->assigned_user_id === (int) $user->id;
+            }
+
+            return $user->position_id
+                && (int) $step->position_id === (int) $user->position_id
+                && $user->canAccessEntity($request->entity_id);
+        });
+    }
+
+    /**
+     * Apakah user punya pengajuan yang melibatkannya sebagai penyetuju (untuk menu).
+     */
+    public static function isParticipantAnywhere(User $user): bool
+    {
+        return RequestApproval::query()
+            ->where(function ($query) use ($user) {
+                $query->where('assigned_user_id', $user->id);
+
+                if ($user->position_id) {
+                    $query->orWhere(function ($byPosition) use ($user) {
+                        $byPosition->whereNull('assigned_user_id')
+                            ->where('position_id', $user->position_id);
+                    });
+                }
+            })
+            ->exists();
+    }
+
+    /**
      * Apakah user boleh melihat pengajuan dengan alur bertingkat ini.
+     *
+     * Pengajuan custom bersifat terpisah antar departemen: hanya super admin, admin
+     * (pembuat FPB), dan penyetuju yang terlibat pada alurnya yang boleh melihat.
+     * Approver dan staff yang bukan peserta tidak mendapat akses lewat lokasi, sehingga
+     * atasan langsung departemen lain tidak melihat pengajuan ini.
      */
     public static function canView(User $user, Pengajuan $request): bool
     {
@@ -103,9 +181,12 @@ class ApprovalChain
             return true;
         }
 
-        if ($user->position_id && $request->approvals->contains('position_id', $user->position_id)
-            && $user->canAccessEntity($request->entity_id)) {
+        if (self::isParticipant($user, $request)) {
             return true;
+        }
+
+        if ($user->role !== 'admin') {
+            return false;
         }
 
         return $request->entity_id
@@ -161,6 +242,9 @@ class ApprovalChain
                 'note' => $note,
             ]);
 
+            // Tanda tangan digital disalin agar FPB lama tidak berubah bila tanda tangan diganti.
+            SignatureStore::snapshot($user, $step);
+
             if ($isFinal) {
                 $locked->update([
                     'status' => 'approved',
@@ -168,6 +252,8 @@ class ApprovalChain
                     'approver_note' => $note,
                     'approved_at' => now(),
                 ]);
+
+                SignatureStore::ensurePicSnapshot($locked);
             }
 
             return $isFinal;

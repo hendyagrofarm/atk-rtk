@@ -92,6 +92,16 @@ class FpbApprovalChainTest extends TestCase
         return Pengajuan::latest('id')->firstOrFail();
     }
 
+    /**
+     * Setujui semua tahap berurutan (atasan jabatan, Spv. GA, Manager HCGA).
+     */
+    private function selesaikan(Pengajuan $pengajuan): void
+    {
+        foreach ([$this->headUser, $this->spvUser, $this->managerUser] as $penyetuju) {
+            $this->setujui($penyetuju, $pengajuan)->assertRedirect(route('approvals.index'));
+        }
+    }
+
     private function setujui(User $user, Pengajuan $pengajuan, array $quantities = [], ?string $note = null)
     {
         return $this->actingAs($user)->post(route('approvals.approve', $pengajuan), array_filter([
@@ -380,6 +390,7 @@ class FpbApprovalChainTest extends TestCase
     public function test_cetak_fpb_memuat_formulir_lengkap(): void
     {
         $pengajuan = $this->buatPengajuan();
+        $this->selesaikan($pengajuan);
 
         $this->actingAs($this->staff)
             ->get(route('fpb.print', $pengajuan))
@@ -387,8 +398,8 @@ class FpbApprovalChainTest extends TestCase
             ->assertSee('FORMULIR PENGAJUAN BARANG (FPB)')
             ->assertSee('PT AGROFARM NUSA RAYA')
             ->assertSee('Affair &amp; Legal - HSE', false)
-            ->assertSee('OPEX')
             ->assertSee('CAPEX')
+            ->assertDontSee('>OPEX<', false)
             ->assertSee('Emergency Eye Wash Portable')
             ->assertSee('Unicare 30L')
             ->assertSee('TOTAL PENGAJUAN')
@@ -407,11 +418,12 @@ class FpbApprovalChainTest extends TestCase
         $payload['items'] = [
             ['custom_item_name' => 'Pulpen', 'custom_category' => 'atk', 'budget_type' => 'OPEX', 'quantity' => 5, 'unit' => 'pcs'],
             ['custom_item_name' => 'Tisu', 'custom_category' => 'RTK', 'budget_type' => 'OPEX', 'quantity' => 3, 'unit' => 'pack'],
-            ['custom_item_name' => 'Plester', 'custom_category' => 'Obat P3K', 'budget_type' => 'OPEX', 'quantity' => 4, 'unit' => 'box'],
+            ['custom_item_name' => 'Plester', 'custom_category' => 'Sarana Prasarana', 'budget_type' => 'OPEX', 'quantity' => 4, 'unit' => 'box'],
             ['custom_item_name' => 'Printer', 'custom_category' => '', 'budget_type' => 'CAPEX', 'quantity' => 1, 'unit' => 'unit'],
         ];
 
         $pengajuan = $this->buatPengajuan(null, $payload);
+        $this->selesaikan($pengajuan);
 
         $html = $this->actingAs($this->staff)->get(route('fpb.print', $pengajuan))->assertOk()->getContent();
 
@@ -433,6 +445,7 @@ class FpbApprovalChainTest extends TestCase
         $payload['items'][0]['estimated_price'] = 7654321;
 
         $pengajuan = $this->buatPengajuan(null, $payload);
+        $this->selesaikan($pengajuan);
 
         $this->actingAs($this->staff)
             ->get(route('fpb.print', $pengajuan))
@@ -441,25 +454,44 @@ class FpbApprovalChainTest extends TestCase
             ->assertDontSee('7.654.321');
     }
 
-    public function test_nama_dan_tanggal_penyetuju_tercetak_setelah_disetujui(): void
+    public function test_fpb_baru_bisa_dicetak_setelah_semua_tahap_disetujui(): void
     {
         $pengajuan = $this->buatPengajuan();
 
-        $sebelum = $this->actingAs($this->staff)->get(route('fpb.print', $pengajuan))->getContent();
-        $this->assertStringNotContainsString('Wachidyah', $sebelum);
+        // Belum ada tahap yang disetujui, dan setelah sebagian pun masih ditolak.
+        $this->actingAs($this->staff)
+            ->get(route('fpb.print', $pengajuan))
+            ->assertRedirect()
+            ->assertSessionHas('error');
 
         $this->setujui($this->headUser, $pengajuan);
+        $this->setujui($this->spvUser, $pengajuan);
+
+        $this->actingAs($this->staff)
+            ->get(route('fpb.print', $pengajuan))
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->setujui($this->managerUser, $pengajuan);
+
+        $this->actingAs($this->staff)->get(route('fpb.print', $pengajuan))->assertOk();
+    }
+
+    public function test_nama_dan_tanggal_semua_penyetuju_tercetak_setelah_selesai(): void
+    {
+        $pengajuan = $this->buatPengajuan();
+        $this->selesaikan($pengajuan);
 
         $this->actingAs($this->staff)
             ->get(route('fpb.print', $pengajuan))
             ->assertOk()
             ->assertSee('Wachidyah')
-            ->assertSee(now()->format('d/m/Y'))
-            ->assertDontSee('Yudi')
-            ->assertDontSee('Muhammad Rudi');
+            ->assertSee('Yudi')
+            ->assertSee('Muhammad Rudi')
+            ->assertSee(now()->format('d/m/Y'));
     }
 
-    public function test_cetak_fpb_menandai_tahap_yang_menolak(): void
+    public function test_fpb_yang_ditolak_tidak_bisa_dicetak(): void
     {
         $pengajuan = $this->buatPengajuan();
 
@@ -468,14 +500,14 @@ class FpbApprovalChainTest extends TestCase
 
         $this->actingAs($this->staff)
             ->get(route('fpb.print', $pengajuan))
-            ->assertOk()
-            ->assertSee('Wachidyah')
-            ->assertSee('Ditolak, ' . now()->format('d/m/Y'));
+            ->assertRedirect()
+            ->assertSessionHas('error');
     }
 
     public function test_cetak_fpb_hanya_untuk_pihak_terkait_dan_pengajuan_custom(): void
     {
         $pengajuan = $this->buatPengajuan();
+        $this->selesaikan($pengajuan);
 
         // Pemohon lain tanpa kaitan.
         $lain = $this->makeUser('staff', 'Staff Lain', null, $this->gudang);
@@ -515,16 +547,26 @@ class FpbApprovalChainTest extends TestCase
             ->assertSee('Approver Lokasi');
     }
 
-    public function test_halaman_detail_staff_menampilkan_alur_dan_tombol_cetak(): void
+    public function test_halaman_detail_staff_menampilkan_alur_dan_tombol_cetak_setelah_selesai(): void
     {
         $pengajuan = $this->buatPengajuan();
 
+        // Selama belum selesai: alur tampil, tombol cetak belum ada.
         $this->actingAs($this->staff)
             ->get(route('staff.requests.show', $pengajuan->id))
             ->assertOk()
             ->assertSee('Lacak Pengajuan')
+            ->assertSee('Spv. GA')
+            ->assertSee('FPB dapat dicetak setelah semua tahap disetujui')
+            ->assertDontSee('Cetak FPB');
+
+        $this->selesaikan($pengajuan);
+
+        $this->actingAs($this->staff)
+            ->get(route('staff.requests.show', $pengajuan->id))
+            ->assertOk()
             ->assertSee('Cetak FPB')
-            ->assertSee('Spv. GA');
+            ->assertDontSee('FPB dapat dicetak setelah semua tahap disetujui');
     }
 
     /* ---------------------------------------------------------------

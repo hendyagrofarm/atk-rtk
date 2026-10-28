@@ -88,9 +88,11 @@
             </form>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <div class="rounded-lg border border-slate-200 bg-white p-3"><p class="text-[10px] text-slate-500">Pengajuan Disetujui</p><p class="text-lg font-bold">{{ $totalApprovedRequests }}</p></div>
-            <div class="rounded-lg border border-slate-200 bg-white p-3"><p class="text-[10px] text-slate-500">Total Barang Keluar</p><p class="text-lg font-bold text-red-700">{{ $totalStockOut }}</p></div>
+            <div class="rounded-lg border border-slate-200 bg-white p-3"><p class="text-[10px] text-slate-500">Keluar via Pengajuan</p><p class="text-lg font-bold text-red-700">{{ $totalStockOut }}</p></div>
+            <div class="rounded-lg border border-slate-200 bg-white p-3"><p class="text-[10px] text-slate-500">Pengeluaran Langsung</p><p class="text-lg font-bold">{{ $totalDirectOuts }}</p></div>
+            <div class="rounded-lg border border-slate-200 bg-white p-3"><p class="text-[10px] text-slate-500">Keluar Langsung (unit)</p><p class="text-lg font-bold text-red-700">{{ number_format($totalDirectUnits, 0, ',', '.') }}</p></div>
         </div>
 
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -136,6 +138,70 @@
                             @endforelse
                         @empty
                             <tr><td colspan="9" class="px-4 py-8 text-center text-[11px] text-slate-500">Data barang keluar tidak ditemukan.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">Pengeluaran Langsung oleh Admin</h3>
+                    <p class="text-[11px] text-slate-500">Barang yang dikeluarkan langsung ke karyawan tanpa pengajuan.</p>
+                </div>
+
+                <a href="{{ route('stock-outs.index') }}" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700">Kelola</a>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            @foreach (['No','Nomor','Entitas','Gudang','Tanggal','Penerima','Barang','Jumlah Keluar','Dikeluarkan Oleh'] as $heading)
+                                <th class="px-4 py-2.5 text-left text-[10px] font-bold uppercase text-slate-500">{{ $heading }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse ($directOuts as $directOut)
+                            @php
+                                $lines = $directOut->items->filter(fn ($line) => ! request()->filled('category_id')
+                                    || (int) $line->item?->category_id === (int) request('category_id'));
+                                $rowspan = max($lines->count(), 1);
+                            @endphp
+
+                            @foreach ($lines as $line)
+                                <tr>
+                                    @if ($loop->first)
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[11px]">{{ $loop->parent->iteration }}</td>
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[10px] font-semibold">
+                                            <a href="{{ route('stock-outs.show', $directOut) }}" class="text-indigo-700 hover:underline">{{ $directOut->issue_number }}</a>
+                                        </td>
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[11px] font-semibold text-blue-700">{{ $directOut->entity?->code ?? '-' }}</td>
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[11px] font-semibold">{{ $directOut->warehouse?->name ?? '-' }}</td>
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[11px]">{{ $directOut->issue_date?->format('d/m/Y') }}</td>
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[11px]">
+                                            {{ $directOut->recipient_name }}
+                                            @if ($directOut->recipient_department)
+                                                <span class="block text-[10px] text-slate-500">{{ $directOut->recipient_department }}</span>
+                                            @endif
+                                        </td>
+                                    @endif
+
+                                    <td class="px-4 py-2.5">
+                                        <p class="text-xs font-semibold">{{ $line->item?->name ?? '-' }}</p>
+                                        <p class="text-[10px] text-slate-500">{{ $line->item?->code ?? '-' }}</p>
+                                    </td>
+                                    <td class="px-4 py-2.5 text-right text-xs font-bold text-red-700">-{{ number_format($line->quantity, 0, ',', '.') }}</td>
+
+                                    @if ($loop->first)
+                                        <td rowspan="{{ $rowspan }}" class="px-4 py-2.5 align-top text-[11px]">{{ $directOut->issuer?->name ?? '-' }}</td>
+                                    @endif
+                                </tr>
+                            @endforeach
+                        @empty
+                            <tr><td colspan="9" class="px-4 py-8 text-center text-[11px] text-slate-500">Belum ada pengeluaran langsung pada filter ini.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

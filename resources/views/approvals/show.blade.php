@@ -147,10 +147,14 @@
                         </p>
                     </div>
 
-                    <a href="{{ route('fpb.print', $approval) }}" target="_blank"
-                       class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
-                        Cetak FPB
-                    </a>
+                    @if ($approval->status === 'approved')
+                        <a href="{{ route('fpb.print', $approval) }}" target="_blank"
+                           class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
+                            Cetak FPB
+                        </a>
+                    @else
+                        <span class="text-[10px] text-slate-400">FPB dapat dicetak setelah semua tahap disetujui</span>
+                    @endif
                 </div>
 
                 @if ($approval->status === 'pending' && $currentStep)
@@ -179,6 +183,9 @@
                             <div>
                                 <p class="text-[10px] text-slate-500">{{ $loop->iteration }}. {{ $step->label }}</p>
                                 <p class="text-xs font-semibold text-slate-800">{{ $step->position_name }}</p>
+                                @if ($step->assignedUser && ! $step->user)
+                                    <p class="text-[10px] text-slate-500">{{ $step->assignedUser->name }}</p>
+                                @endif
                                 @if ($step->user)
                                     <p class="text-[10px] text-slate-600">
                                         {{ $step->user->name }} | {{ $step->acted_at?->format('d/m/Y H:i') }}

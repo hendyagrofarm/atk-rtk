@@ -12,8 +12,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Support\ApprovalChain;
+use App\Support\Fulfillment;
+use App\Support\SignatureStore;
 use App\Support\RequestTimeline;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Throwable;
 
 class RequestController extends Controller
@@ -27,7 +31,7 @@ class RequestController extends Controller
                 'approvals',
             ])
             ->withCount('details')
-            ->where('user_id', Auth::id())
+            ->mine(Auth::user())
             ->latest()
             ->paginate(10);
 
@@ -257,20 +261,51 @@ class RequestController extends Controller
         // Admin dan super admin boleh mengisi FPB atas nama PIC dari divisi lain.
         $canSetPic = in_array($user->role, ['super_admin', 'admin'], true);
 
-        $signerSuggestions = \App\Models\User::query()
+        // Calon PIC (admin mengisi atas nama orang lain): semua user aktif. PIC yang dipilih dari
+        // sistem otomatis membawa tanda tangan digitalnya ke FPB.
+        $picCandidates = \App\Models\User::query()
             ->with('position')
             ->where('is_active', true)
             ->orderBy('name')
             ->get()
             ->map(fn ($person) => [
+                'id' => $person->id,
                 'name' => $person->name,
                 'position' => $person->position?->name ?? '',
+                'has_signature' => SignatureStore::userHasSignature($person),
+            ])
+            ->values();
+
+        $ownHasSignature = SignatureStore::userHasSignature($user);
+
+        // Tahap tetap setelah atasan langsung, untuk ditampilkan sebagai gambaran alur.
+        $fixedSteps = \App\Models\ApprovalStep::query()
+            ->active()
+            ->ordered()
+            ->with('position')
+            ->get()
+            ->filter(fn ($step) => $step->position !== null)
+            ->values();
+
+        // Calon atasan langsung: user aktif selain pembuat. Atasan yang dipilih menyetujui
+        // secara digital, sehingga tanda tangannya perlu tersedia.
+        $superiorCandidates = \App\Models\User::query()
+            ->with('position')
+            ->where('is_active', true)
+            ->where('id', '!=', $user->id)
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($person) => [
+                'id' => $person->id,
+                'name' => $person->name,
+                'position' => $person->position?->name ?? '',
+                'has_signature' => SignatureStore::userHasSignature($person),
             ])
             ->values();
 
         return view(
             'staff.requests.create-custom',
-            compact('entities', 'user', 'canSetPic', 'signerSuggestions')
+            compact('entities', 'user', 'canSetPic', 'picCandidates', 'superiorCandidates', 'ownHasSignature', 'fixedSteps')
         );
     }
 
@@ -296,14 +331,27 @@ class RequestController extends Controller
                 'max:150',
             ],
             'pic_name' => [
-                Rule::requiredIf($canSetPic),
+                Rule::requiredIf($canSetPic && ! $request->filled('pic_user_id')),
                 'nullable',
                 'string',
                 'max:150',
             ],
+            'pic_user_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('users', 'id')->where('is_active', true),
+            ],
+            'pic_signature' => ['nullable', 'file', 'mimes:png', 'max:' . SignatureStore::MAX_KILOBYTES],
             'pic_position' => ['nullable', 'string', 'max:150'],
             'superior_name' => ['nullable', 'string', 'max:150'],
             'superior_position' => ['nullable', 'string', 'max:150'],
+            'superior_user_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('users', 'id')->where('is_active', true),
+                Rule::notIn([$user->id]),
+            ],
+            'superior_signature' => ['nullable', 'file', 'mimes:png', 'max:' . SignatureStore::MAX_KILOBYTES],
             'items' => [
                 'required',
                 'array',
@@ -375,8 +423,41 @@ class RequestController extends Controller
                 ->with('error', 'Anda tidak memiliki akses ke entitas tersebut.');
         }
 
+        // Atasan langsung dari user sistem menyetujui secara digital; nama dan jabatannya
+        // mengikuti data user, bukan isian manual.
+        $superior = filled($validated['superior_user_id'] ?? null)
+            ? \App\Models\User::with('position')->find($validated['superior_user_id'])
+            : null;
+
+        // PIC: staff selalu dirinya sendiri; admin boleh memilih user sistem (membawa tanda
+        // tangan digital) atau mengisi manual (tanda tangan basah).
+        $picUser = $canSetPic
+            ? (filled($validated['pic_user_id'] ?? null)
+                ? \App\Models\User::with('position')->find($validated['pic_user_id'])
+                : null)
+            : $user;
+
+        if ($picUser && $superior && $picUser->id === $superior->id) {
+            throw ValidationException::withMessages([
+                'superior_user_id' => 'Atasan langsung tidak boleh orang yang sama dengan PIC.',
+            ]);
+        }
+
+        $signatureFile = $canSetPic && $superior ? $request->file('superior_signature') : null;
+        $picSignatureFile = $canSetPic && $picUser ? $request->file('pic_signature') : null;
+
+        foreach (['superior_signature' => $signatureFile, 'pic_signature' => $picSignatureFile] as $field => $file) {
+            if ($file) {
+                try {
+                    SignatureStore::assertValidPng($file);
+                } catch (RuntimeException $e) {
+                    throw ValidationException::withMessages([$field => $e->getMessage()]);
+                }
+            }
+        }
+
         try {
-            DB::transaction(function () use ($validated, $user, $canSetPic) {
+            DB::transaction(function () use ($validated, $user, $canSetPic, $superior, $signatureFile, $picUser, $picSignatureFile) {
                 $estimatedTotal = collect($validated['items'])
                     ->sum(function ($item) {
                         return (int) $item['quantity']
@@ -401,12 +482,18 @@ class RequestController extends Controller
                     'note' => $validated['note'] ?? null,
                     'department' => $validated['department'],
                     // Staff selalu menjadi PIC dirinya sendiri; admin dapat menentukan PIC.
-                    'pic_name' => $canSetPic ? trim($validated['pic_name']) : $user->name,
-                    'pic_position' => $canSetPic
-                        ? (filled($validated['pic_position'] ?? null) ? trim($validated['pic_position']) : null)
-                        : $user->position?->name,
-                    'superior_name' => filled($validated['superior_name'] ?? null) ? trim($validated['superior_name']) : null,
-                    'superior_position' => filled($validated['superior_position'] ?? null) ? trim($validated['superior_position']) : null,
+                    'pic_user_id' => $picUser?->id,
+                    'pic_name' => $picUser ? $picUser->name : trim($validated['pic_name']),
+                    'pic_position' => $picUser
+                        ? $picUser->position?->name
+                        : (filled($validated['pic_position'] ?? null) ? trim($validated['pic_position']) : null),
+                    'superior_user_id' => $superior?->id,
+                    'superior_name' => $superior
+                        ? $superior->name
+                        : (filled($validated['superior_name'] ?? null) ? trim($validated['superior_name']) : null),
+                    'superior_position' => $superior
+                        ? $superior->position?->name
+                        : (filled($validated['superior_position'] ?? null) ? trim($validated['superior_position']) : null),
                     'estimated_total' => $estimatedTotal,
                     'approver_note' => null,
                     'approved_at' => null,
@@ -430,6 +517,18 @@ class RequestController extends Controller
                         'note' => $item['note'] ?? null,
                     ]);
                 }
+
+                // Admin dapat mengunggah tanda tangan atasan langsung saat membuat FPB.
+                if ($signatureFile && $superior) {
+                    SignatureStore::store($superior, $signatureFile);
+                }
+
+                if ($picSignatureFile && $picUser) {
+                    SignatureStore::store($picUser, $picSignatureFile);
+                }
+
+                // Tanda tangan digital PIC disalin saat FPB dibuat.
+                SignatureStore::snapshotForRequest($pengajuan, $picUser);
 
                 ApprovalChain::initialize($pengajuan);
             });
@@ -464,8 +563,10 @@ class RequestController extends Controller
                 'user.position',
                 'approver.position',
                 'approvals.user.position',
+                'fulfillments.user',
+                'picUser',
             ])
-            ->where('user_id', Auth::id())
+            ->mine(Auth::user())
             ->findOrFail($id);
 
         return view(
@@ -473,8 +574,32 @@ class RequestController extends Controller
             [
                 'request' => $request,
                 'events' => RequestTimeline::events($request),
+                'awaitingReceipt' => Fulfillment::isAwaitingReceipt($request)
+                    && $request->receiverUser()?->id === Auth::id(),
+                'fulfillmentComplete' => Fulfillment::isComplete($request),
+                'ownHasSignature' => SignatureStore::userHasSignature(Auth::user()),
             ]
         );
+    }
+
+    /**
+     * Penerima mengonfirmasi barang sudah diterima (tanda tangan digital pada BAST).
+     */
+    public function receive(Request $http, $id)
+    {
+        $request = Pengajuan::query()->mine(Auth::user())->findOrFail($id);
+
+        $data = $http->validate(['note' => ['nullable', 'string', 'max:1000']]);
+
+        try {
+            Fulfillment::confirmReceipt($request, Auth::user(), $data['note'] ?? null);
+        } catch (RuntimeException $e) {
+            return back()->with('receipt_error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('staff.requests.show', $request->id)
+            ->with('receipt_success', 'Terima kasih, penerimaan barang sudah dikonfirmasi.');
     }
 
     private function generateRequestNumber(): string

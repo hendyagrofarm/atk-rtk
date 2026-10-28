@@ -192,6 +192,14 @@
             height: 22mm;
             border-top: 0;
             border-bottom: 0;
+            vertical-align: middle;
+        }
+
+        .signatures .space img {
+            display: block;
+            max-width: 46mm;
+            max-height: 20mm;
+            margin: 0 auto;
         }
 
         .signatures .person {
@@ -292,28 +300,29 @@
             </thead>
 
             <tbody>
-                <tr class="section"><td colspan="7">OPEX</td></tr>
+                {{-- Hanya bagian yang diajukan yang ditampilkan. --}}
+                @if (count($sections['opex']) > 0)
+                    <tr class="section"><td colspan="7">OPEX</td></tr>
 
-                @foreach ($sections['opex'] as $groupIndex => $group)
-                    <tr class="group">
-                        <td class="center">{{ $letter($groupIndex) }}</td>
-                        <td colspan="6">{{ $group['label'] }}</td>
-                    </tr>
+                    @foreach ($sections['opex'] as $groupIndex => $group)
+                        <tr class="group">
+                            <td class="center">{{ $letter($groupIndex) }}</td>
+                            <td colspan="6">{{ $group['label'] }}</td>
+                        </tr>
 
-                    @forelse ($group['items'] as $detail)
-                        @include('fpb._row', ['detail' => $detail, 'number' => $loop->iteration])
-                    @empty
-                        <tr class="blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
-                    @endforelse
-                @endforeach
+                        @foreach ($group['items'] as $detail)
+                            @include('fpb._row', ['detail' => $detail, 'number' => $loop->iteration])
+                        @endforeach
+                    @endforeach
+                @endif
 
-                <tr class="section"><td colspan="7">CAPEX</td></tr>
+                @if ($sections['capex']->isNotEmpty())
+                    <tr class="section"><td colspan="7">CAPEX</td></tr>
 
-                @forelse ($sections['capex'] as $detail)
-                    @include('fpb._row', ['detail' => $detail, 'number' => $letter($loop->index)])
-                @empty
-                    <tr class="blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
-                @endforelse
+                    @foreach ($sections['capex'] as $detail)
+                        @include('fpb._row', ['detail' => $detail, 'number' => $letter($loop->index)])
+                    @endforeach
+                @endif
 
                 <tr class="total">
                     <td colspan="3" class="center">TOTAL PENGAJUAN</td>
@@ -336,7 +345,11 @@
             </tr>
             <tr>
                 @foreach ($signatures as $signature)
-                    <td class="space"></td>
+                    <td class="space">
+                        @if (! empty($signature['image']))
+                            <img src="{{ $signature['image'] }}" alt="Tanda tangan {{ $signature['name'] }}">
+                        @endif
+                    </td>
                 @endforeach
             </tr>
             <tr>
@@ -352,7 +365,7 @@
         </table>
 
         <p class="footnote no-print">
-            Nama dan tanggal terisi otomatis setelah tiap tahap disetujui di sistem. Tanda tangan dibubuhkan langsung pada kolom kosong setelah dicetak.
+            Tanda tangan digital, nama, dan tanggal tercetak otomatis untuk tahap yang disetujui di sistem. Kolom yang masih kosong ditandatangani langsung setelah dicetak.
         </p>
     </div>
 </body>

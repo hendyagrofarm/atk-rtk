@@ -6,13 +6,16 @@ use App\Http\Controllers\PositionController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EntityController;
+use App\Http\Controllers\BastController;
 use App\Http\Controllers\FpbController;
+use App\Http\Controllers\FulfillmentController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\KpiReportController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\Staff\RequestController as StaffRequestController;
 use App\Http\Controllers\StockInController;
+use App\Http\Controllers\StockOutController;
 use App\Http\Controllers\StockAuditController;
 use App\Http\Controllers\StockTransferController;
 use App\Http\Controllers\StockTransferReportController;
@@ -96,6 +99,9 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->group(functio
     Route::patch('/users/{user}/activate', [UserController::class, 'activate'])
         ->name('users.activate');
 
+    Route::get('/users/{user}/signature', [UserController::class, 'signature'])
+        ->name('users.signature');
+
     /*
     |--------------------------------------------------------------------------
     | Master Data
@@ -123,6 +129,19 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->group(functio
 
     /*
     |--------------------------------------------------------------------------
+    | Barang Keluar Langsung
+    |--------------------------------------------------------------------------
+    | Admin pemegang stok mencatat pengeluaran barang kepada karyawan tanpa
+    | pengajuan. Route export harus berada sebelum route show.
+    */
+    Route::get('/stock-outs/export-excel', [StockOutController::class, 'exportExcel'])
+        ->name('stock-outs.export-excel');
+
+    Route::resource('stock-outs', StockOutController::class)
+        ->only(['index', 'create', 'store', 'show']);
+
+    /*
+    |--------------------------------------------------------------------------
     | Mutasi Stok Antar Gudang
     |--------------------------------------------------------------------------
     */
@@ -137,6 +156,32 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->group(functio
     */
     Route::resource('stock-audits', StockAuditController::class)
         ->only(['index', 'create', 'store']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pembelanjaan dan Serah Terima (BAST) pengajuan custom
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/fulfillments', [FulfillmentController::class, 'index'])->name('fulfillments.index');
+    Route::get('/fulfillments/{pengajuan}', [FulfillmentController::class, 'show'])
+        ->whereNumber('pengajuan')->name('fulfillments.show');
+    Route::post('/fulfillments/{pengajuan}/advance', [FulfillmentController::class, 'advance'])
+        ->whereNumber('pengajuan')->name('fulfillments.advance');
+    Route::post('/fulfillments/{pengajuan}/receive', [FulfillmentController::class, 'receiveOnBehalf'])
+        ->whereNumber('pengajuan')->name('fulfillments.receive');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pembelanjaan dan Serah Terima (BAST) pengajuan custom
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/fulfillments', [FulfillmentController::class, 'index'])->name('fulfillments.index');
+    Route::get('/fulfillments/{pengajuan}', [FulfillmentController::class, 'show'])
+        ->whereNumber('pengajuan')->name('fulfillments.show');
+    Route::post('/fulfillments/{pengajuan}/advance', [FulfillmentController::class, 'advance'])
+        ->whereNumber('pengajuan')->name('fulfillments.advance');
+    Route::post('/fulfillments/{pengajuan}/receive', [FulfillmentController::class, 'receiveOnBehalf'])
+        ->whereNumber('pengajuan')->name('fulfillments.receive');
 
     /*
     |--------------------------------------------------------------------------
@@ -255,6 +300,20 @@ Route::middleware(['auth', 'verified', 'role:staff,admin,super_admin'])
         )
             ->whereNumber('id')
             ->name('requests.show');
+
+        Route::post(
+            '/requests/{id}/receive',
+            [StaffRequestController::class, 'receive']
+        )
+            ->whereNumber('id')
+            ->name('requests.receive');
+
+        Route::post(
+            '/requests/{id}/receive',
+            [StaffRequestController::class, 'receive']
+        )
+            ->whereNumber('id')
+            ->name('requests.receive');
     });
 
 /*
@@ -271,7 +330,7 @@ Route::get('/approver/dashboard', function () {
 | Route Approval Pengajuan
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified', 'role:super_admin,admin,approver'])
+Route::middleware(['auth', 'verified', 'role:super_admin,admin,approver,staff'])
     ->prefix('approvals')
     ->name('approvals.')
     ->group(function () {
@@ -299,6 +358,11 @@ Route::get('/fpb/{pengajuan}', [FpbController::class, 'print'])
     ->middleware(['auth', 'verified'])
     ->whereNumber('pengajuan')
     ->name('fpb.print');
+
+Route::get('/bast/{pengajuan}', [BastController::class, 'print'])
+    ->middleware(['auth', 'verified', 'role:staff,admin,super_admin,approver'])
+    ->whereNumber('pengajuan')
+    ->name('bast.print');
 
 /*
 |--------------------------------------------------------------------------

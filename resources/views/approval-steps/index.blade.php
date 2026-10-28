@@ -25,9 +25,27 @@
 
         <div class="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] leading-4 text-sky-800">
             <p class="font-semibold">Cara kerja</p>
-            <p>Kotak "Diajukan oleh" (PIC) dan "Diketahui oleh" atasan langsung diisi pembuat pengajuan untuk tiap FPB dan hanya ditandatangani basah, jadi tidak diatur di sini. Atur di sini tahap yang tetap untuk semua pengajuan, misalnya Spv. GA lalu Manager HCGA. Tahap berjalan berurutan dari atas ke bawah dan disetujui di sistem; tahap terakhir yang menyetujui menyelesaikan pengajuan. Perubahan hanya berlaku untuk pengajuan baru, pengajuan yang sudah berjalan tidak berubah.</p>
-            <p>Yang boleh memproses sebuah tahap adalah user yang berjabatan sama (dan memiliki akses ke entitas pengajuan), serta super admin. User penyetuju juga perlu role Approver agar dapat membuka menu Approval.</p>
+            <p>Urutan persetujuan setiap FPB: <strong>atasan langsung</strong> (dipilih dari user sistem saat FPB dibuat, jadi tidak diatur di sini), lalu tahap tetap di bawah ini untuk semua pengajuan, misalnya Spv. GA lalu Manager HCGA. Kotak "Diajukan oleh" (PIC) tetap tanda tangan basah. Tahap berjalan berurutan dan disetujui di sistem; tahap terakhir yang menyetujui menyelesaikan pengajuan, dan FPB dicetak setelah itu dengan tanda tangan digital para penyetuju. Perubahan hanya berlaku untuk pengajuan baru.</p>
+            <p>Yang boleh memproses tahap tetap adalah user yang berjabatan sama (dan memiliki akses ke entitas pengajuan), serta super admin. Akun berrole Staff pun bisa menjadi penyetuju: menu Approval muncul otomatis, dan hanya menampilkan pengajuan yang melibatkannya. Unggah tanda tangan digital (PNG) tiap penyetuju di Manajemen User.</p>
         </div>
+
+        @php
+            $superiorSteps = $steps->filter(
+                fn ($step) => $step->is_active && \App\Models\ApprovalStep::isSuperiorPosition($step->position?->name)
+            );
+        @endphp
+
+        @if ($superiorSteps->isNotEmpty())
+            <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-4 text-red-800">
+                <p class="font-semibold">Tahap atasan langsung sebaiknya dihapus dari sini</p>
+                <p>
+                    Tahap {{ $superiorSteps->pluck('step_order')->implode(', ') }} memakai jabatan
+                    "{{ $superiorSteps->first()->position?->name }}". Atasan langsung sekarang dipilih per pengajuan saat FPB dibuat,
+                    sehingga tahap tetap ini membuat persetujuan dobel dan membuat siapa pun berjabatan itu dapat melihat pengajuan
+                    dari semua departemen. Hapus tahap ini, lalu ubah jabatan user terkait di Manajemen User.
+                </p>
+            </div>
+        @endif
 
         @if ($steps->where('is_active', true)->isEmpty())
             <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">

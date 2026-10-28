@@ -27,10 +27,12 @@ class RequestApproval extends Model
         'label',
         'position_id',
         'position_name',
+        'assigned_user_id',
         'status',
         'user_id',
         'acted_at',
         'note',
+        'signature_path',
     ];
 
     protected $casts = [
@@ -51,6 +53,14 @@ class RequestApproval extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * User yang ditunjuk khusus untuk tahap ini (atasan langsung), jika ada.
+     */
+    public function assignedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
     public function isPending(): bool

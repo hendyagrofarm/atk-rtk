@@ -34,6 +34,15 @@ class ApprovalStep extends Model
         'is_active' => 'boolean',
     ];
 
+    /**
+     * Jabatan seperti "Atasan Langsung" tidak cocok sebagai tahap tetap: atasan langsung
+     * berbeda tiap pengajuan dan dipilih saat FPB dibuat.
+     */
+    public static function isSuperiorPosition(?string $positionName): bool
+    {
+        return str_contains(mb_strtolower((string) $positionName), 'atasan');
+    }
+
     public function position(): BelongsTo
     {
         return $this->belongsTo(Position::class);

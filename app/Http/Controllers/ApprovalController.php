@@ -75,6 +75,7 @@ class ApprovalController extends Controller
             'warehouse',
             'approver',
             'approvals.user',
+            'approvals.assignedUser',
             'details.item.category',
             'details.item.itemStocks' => function ($query) use ($approval) {
                 $query
@@ -401,24 +402,7 @@ class ApprovalController extends Controller
      */
     private function scopeToUserAccess($query, $user, $allowedEntityIds, $allowedWarehouseIds)
     {
-        return $query->where(function ($scope) use ($user, $allowedEntityIds, $allowedWarehouseIds) {
-            $scope->where(function ($location) use ($allowedEntityIds, $allowedWarehouseIds) {
-                $location
-                    ->whereIn('entity_id', $allowedEntityIds)
-                    ->whereIn('warehouse_id', $allowedWarehouseIds);
-            });
-
-            if ($user->position_id) {
-                $scope->orWhere(function ($chain) use ($user, $allowedEntityIds) {
-                    $chain
-                        ->whereIn('entity_id', $allowedEntityIds)
-                        ->whereHas(
-                            'approvals',
-                            fn ($approvals) => $approvals->where('position_id', $user->position_id)
-                        );
-                });
-            }
-        });
+        return $query->visibleToApprover($user);
     }
 
     private function ensureApprovalAccess(Pengajuan $approval): void
@@ -435,6 +419,11 @@ class ApprovalController extends Controller
             }
 
             return;
+        }
+
+        // Akun staff hanya boleh membuka pengajuan yang melibatkannya sebagai penyetuju.
+        if ($user->role === 'staff') {
+            abort(403, 'Anda tidak memiliki akses untuk pengajuan ini.');
         }
 
         if (

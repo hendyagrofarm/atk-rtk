@@ -53,7 +53,7 @@ class ApprovalStepController extends Controller
 
     public function update(Request $request, ApprovalStep $approvalStep)
     {
-        $validated = $request->validate($this->rules(), $this->messages());
+        $validated = $request->validate($this->rules($request->boolean('is_active')), $this->messages());
 
         $approvalStep->update([
             'label' => $validated['label'],
@@ -108,7 +108,7 @@ class ApprovalStepController extends Controller
         return redirect()->route('approval-steps.index');
     }
 
-    private function rules(): array
+    private function rules(bool $mustBeActive = true): array
     {
         return [
             'label' => ['required', Rule::in(ApprovalStep::LABELS)],
@@ -116,6 +116,13 @@ class ApprovalStepController extends Controller
                 'required',
                 'integer',
                 Rule::exists('positions', 'id')->where('is_active', true),
+                function (string $attribute, mixed $value, \Closure $fail) use ($mustBeActive) {
+                    $name = Position::find($value)?->name;
+
+                    if ($mustBeActive && ApprovalStep::isSuperiorPosition($name)) {
+                        $fail('Atasan langsung dipilih per pengajuan saat FPB dibuat, jadi tidak dipakai sebagai tahap tetap.');
+                    }
+                },
             ],
         ];
     }

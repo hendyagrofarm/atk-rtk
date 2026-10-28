@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Request as Pengajuan;
 use App\Support\ApprovalChain;
+use App\Support\SignatureStore;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
@@ -35,6 +36,14 @@ class FpbController extends Controller
 
         abort_unless($this->canPrint($user, $pengajuan), 403, 'Anda tidak memiliki akses ke formulir ini.');
 
+        // FPB dicetak di akhir, setelah semua tahap approval selesai, agar tanda tangan
+        // digital semua penyetuju sudah tercantum.
+        if ($pengajuan->status !== 'approved') {
+            return redirect()
+                ->back(302, [], route('dashboard'))
+                ->with('error', 'FPB dapat dicetak setelah seluruh tahap approval disetujui.');
+        }
+
         return view('fpb.print', [
             'pengajuan' => $pengajuan,
             'sections' => $this->buildSections($pengajuan),
@@ -46,6 +55,12 @@ class FpbController extends Controller
     private function canPrint($user, Pengajuan $pengajuan): bool
     {
         if ($user->isSuperAdmin() || (int) $pengajuan->user_id === (int) $user->id) {
+            return true;
+        }
+
+        // Penyetuju yang terlibat pada alur pengajuan ini (termasuk atasan langsung berakun
+        // staff) boleh mencetak FPB final pengajuan tersebut.
+        if ($pengajuan->usesApprovalChain() && ApprovalChain::isParticipant($user, $pengajuan)) {
             return true;
         }
 
@@ -64,7 +79,7 @@ class FpbController extends Controller
     }
 
     /**
-     * Kelompokkan barang seperti formulir: OPEX (ATK, RTK, Obat P3K, ...) lalu CAPEX.
+     * Kelompokkan barang seperti formulir: OPEX (ATK, RTK, Sarana Prasarana, ...) lalu CAPEX.
      *
      * @return array{opex: array<int, array{label: string, items: \Illuminate\Support\Collection}>, capex: \Illuminate\Support\Collection}
      */
@@ -73,7 +88,7 @@ class FpbController extends Controller
         $opexItems = $pengajuan->details->filter(fn ($d) => $d->budget_type !== 'CAPEX');
         $capexItems = $pengajuan->details->filter(fn ($d) => $d->budget_type === 'CAPEX')->values();
 
-        $fixedGroups = ['ATK', 'RTK', 'OBAT P3K'];
+        $fixedGroups = ['ATK', 'RTK', 'SARANA PRASARANA'];
 
         $grouped = $opexItems->groupBy(fn ($d) => $this->normalizeGroup($d->custom_category));
 
@@ -87,6 +102,9 @@ class FpbController extends Controller
         foreach ($grouped as $label => $items) {
             $groups[] = ['label' => $label, 'items' => $items->values()];
         }
+
+        // Hanya kelompok yang berisi barang yang ditampilkan.
+        $groups = array_values(array_filter($groups, fn ($group) => $group['items']->isNotEmpty()));
 
         return ['opex' => $groups, 'capex' => $capexItems];
     }
@@ -102,7 +120,9 @@ class FpbController extends Controller
         return match (preg_replace('/[^A-Z0-9]/', '', $text)) {
             'ATK' => 'ATK',
             'RTK' => 'RTK',
-            'OBATP3K', 'P3K' => 'OBAT P3K',
+            // "Obat P3K" diganti menjadi "Sarana Prasarana"; data lama berkategori Obat P3K
+            // ikut dikelompokkan ke Sarana Prasarana.
+            'SARANAPRASARANA', 'SARPRAS', 'OBATP3K', 'P3K' => 'SARANA PRASARANA',
             default => $text,
         };
     }
@@ -125,16 +145,25 @@ class FpbController extends Controller
                 'name' => filled($pengajuan->pic_name) ? $pengajuan->pic_name : $pengajuan->user?->name,
                 'date' => $pengajuan->created_at?->format('d/m/Y'),
                 'note' => null,
+                // Tanda tangan digital PIC (staff pembuat atau user pilihan admin), jika ada.
+                'image' => SignatureStore::dataUri($pengajuan->pic_signature_path),
             ],
-            [
-                // Tanda tangan basah saja: tidak ada tahap digital untuk atasan langsung.
+        ];
+
+        // Atasan langsung dari sistem sudah menjadi tahap approval digital (di daftar tahap).
+        // Jika diisi manual (tanpa akun), kotaknya tetap ada untuk tanda tangan basah.
+        $superiorIsDigital = $pengajuan->approvals->contains(fn ($step) => $step->assigned_user_id !== null);
+
+        if (! $superiorIsDigital) {
+            $signatures[] = [
                 'label' => 'Diketahui oleh',
                 'position' => filled($pengajuan->superior_position) ? $pengajuan->superior_position : 'Atasan Langsung',
                 'name' => $pengajuan->superior_name,
                 'date' => null,
                 'note' => null,
-            ],
-        ];
+                'image' => null,
+            ];
+        }
 
         if ($pengajuan->approvals->isNotEmpty()) {
             foreach ($pengajuan->approvals as $step) {
@@ -146,6 +175,7 @@ class FpbController extends Controller
                     'name' => $acted ? $step->user?->name : null,
                     'date' => $acted ? $step->acted_at?->format('d/m/Y') : null,
                     'note' => $step->status === 'rejected' ? 'Ditolak' : null,
+                    'image' => $step->status === 'approved' ? SignatureStore::dataUri($step->signature_path) : null,
                 ];
             }
 
@@ -163,6 +193,7 @@ class FpbController extends Controller
             'name' => null,
             'date' => null,
             'note' => null,
+            'image' => null,
         ];
 
         $signatures[] = [
@@ -173,6 +204,7 @@ class FpbController extends Controller
             'name' => $approved ? $pengajuan->approver?->name : null,
             'date' => $approved ? $pengajuan->approved_at?->format('d/m/Y') : null,
             'note' => null,
+            'image' => null,
         ];
 
         return $signatures;
