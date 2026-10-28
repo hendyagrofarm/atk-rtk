@@ -266,6 +266,8 @@ class RequestController extends Controller
         $picCandidates = \App\Models\User::query()
             ->with('position')
             ->where('is_active', true)
+            // Akun Super Admin tidak ditampilkan kepada admin biasa.
+            ->when(! $user->isSuperAdmin(), fn ($query) => $query->where('role', '!=', 'super_admin'))
             ->orderBy('name')
             ->get()
             ->map(fn ($person) => [
@@ -292,6 +294,8 @@ class RequestController extends Controller
         $superiorCandidates = \App\Models\User::query()
             ->with('position')
             ->where('is_active', true)
+            // Akun Super Admin tidak ditampilkan kepada admin biasa.
+            ->when(! $user->isSuperAdmin(), fn ($query) => $query->where('role', '!=', 'super_admin'))
             ->where('id', '!=', $user->id)
             ->orderBy('name')
             ->get()

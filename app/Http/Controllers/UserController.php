@@ -35,6 +35,8 @@ class UserController extends Controller
         $warehouseId = $request->input('warehouse_id');
 
         $users = User::query()
+            // Admin biasa tidak melihat akun Super Admin.
+            ->when(! Auth::user()->isSuperAdmin(), fn ($query) => $query->where('role', '!=', 'super_admin'))
             ->with([
                 'entity',
                 'warehouse',
@@ -49,7 +51,7 @@ class UserController extends Controller
                 });
             })
             ->when(
-                in_array($role, $this->roles, true),
+                in_array($role, $this->availableRoles(), true),
                 fn ($query) => $query->where('role', $role)
             )
             ->when(
@@ -116,13 +118,13 @@ class UserController extends Controller
             'status',
             'entityId',
             'warehouseId'
-        ))->with('roles', $this->roles);
+        ))->with('roles', $this->availableRoles());
     }
 
     public function create()
     {
         return view('users.create', [
-            'roles' => $this->roles,
+            'roles' => $this->availableRoles(),
             'positions' => Position::query()->where('is_active', true)->orderBy('name')->get(),
             'entities' => Entity::query()
                 ->where('is_active', true)
@@ -208,6 +210,8 @@ class UserController extends Controller
 
     public function edit(User $user)
     {
+        $this->guardTarget($user);
+
         $user->load([
             'entity',
             'warehouse',
@@ -249,7 +253,7 @@ class UserController extends Controller
 
         return view('users.edit', [
             'user' => $user,
-            'roles' => $this->roles,
+            'roles' => $this->availableRoles(),
             'positions' => Position::query()
                 ->where(fn ($query) => $query->where('is_active', true)->orWhere('id', $user->position_id))
                 ->orderBy('name')
@@ -263,6 +267,8 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        $this->guardTarget($user);
+
         $validated = $this->validateUser($request, $user);
         $signature = $this->validatedSignature($request);
 
@@ -360,6 +366,8 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
+        $this->guardTarget($user);
+
         if ($user->id === Auth::id()) {
             return back()->with('error', 'Anda tidak boleh menonaktifkan akun sendiri.');
         }
@@ -386,6 +394,8 @@ class UserController extends Controller
 
     public function activate(User $user)
     {
+        $this->guardTarget($user);
+
         if ($user->is_active) {
             return redirect()
                 ->route('users.index')
@@ -438,11 +448,37 @@ class UserController extends Controller
      */
     public function signature(User $user)
     {
+        $this->guardTarget($user);
+
         abort_unless(SignatureStore::userHasSignature($user), 404);
 
         return response()->file(
             Storage::disk(SignatureStore::DISK)->path($user->signature_path),
             ['Content-Type' => 'image/png', 'Cache-Control' => 'private, no-store']
+        );
+    }
+
+    /**
+     * Role yang boleh dipilih: Super Admin hanya dapat dibuat atau dipilih oleh Super Admin.
+     *
+     * @return array<int, string>
+     */
+    private function availableRoles(): array
+    {
+        return Auth::user()->isSuperAdmin()
+            ? $this->roles
+            : array_values(array_diff($this->roles, ['super_admin']));
+    }
+
+    /**
+     * Admin biasa tidak boleh melihat atau mengubah akun Super Admin (termasuk password-nya).
+     */
+    private function guardTarget(User $user): void
+    {
+        abort_if(
+            $user->role === 'super_admin' && ! Auth::user()->isSuperAdmin(),
+            403,
+            'Anda tidak memiliki akses ke akun Super Admin.'
         );
     }
 
@@ -480,7 +516,7 @@ class UserController extends Controller
                     'max:255',
                     Rule::unique('users', 'email')->ignore($user?->id),
                 ],
-                'role' => ['required', Rule::in($this->roles)],
+                'role' => ['required', Rule::in($this->availableRoles())],
                 'position_id' => [
                     'nullable',
                     'integer',
