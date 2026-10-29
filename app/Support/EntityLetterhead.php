@@ -7,35 +7,41 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Kop surat (latar satu halaman A4 berisi logo dan alamat) per perusahaan untuk dokumen cetak seperti BAST.
+ * Logo dan kop surat per perusahaan untuk dokumen cetak (FPB memakai logo, BAST memakai kop surat A4).
  * Disimpan di disk privat dan disisipkan ke halaman cetak sebagai data URI.
  */
 class EntityLetterhead
 {
     public const DISK = 'local';
 
-    public static function store(Entity $entity, UploadedFile $file): void
-    {
-        self::delete($entity);
+    public const LETTERHEAD = 'letterhead_path';
+    public const LOGO = 'logo_path';
 
-        $path = 'letterheads/' . $entity->id . '-' . time() . '.' . ($file->extension() ?: 'png');
+    public static function store(Entity $entity, UploadedFile $file, string $column = self::LETTERHEAD): void
+    {
+        self::delete($entity, $column);
+
+        $folder = $column === self::LOGO ? 'logos' : 'letterheads';
+        $path = $folder . '/' . $entity->id . '-' . time() . '.' . ($file->extension() ?: 'png');
         Storage::disk(self::DISK)->put($path, $file->get());
 
-        $entity->forceFill(['letterhead_path' => $path])->save();
+        $entity->forceFill([$column => $path])->save();
     }
 
-    public static function delete(Entity $entity): void
+    public static function delete(Entity $entity, string $column = self::LETTERHEAD): void
     {
-        if ($entity->letterhead_path && Storage::disk(self::DISK)->exists($entity->letterhead_path)) {
-            Storage::disk(self::DISK)->delete($entity->letterhead_path);
+        $path = $entity->{$column};
+
+        if ($path && Storage::disk(self::DISK)->exists($path)) {
+            Storage::disk(self::DISK)->delete($path);
         }
 
-        $entity->forceFill(['letterhead_path' => null])->save();
+        $entity->forceFill([$column => null])->save();
     }
 
-    public static function dataUri(?Entity $entity): ?string
+    public static function dataUri(?Entity $entity, string $column = self::LETTERHEAD): ?string
     {
-        $path = $entity?->letterhead_path;
+        $path = $entity?->{$column};
 
         if (! $path || ! Storage::disk(self::DISK)->exists($path)) {
             return null;

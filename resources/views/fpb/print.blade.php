@@ -259,7 +259,7 @@
         <table class="header">
             <tr>
                 <td class="logo">
-                    <img src="{{ asset('images/agrofarm-logo.png') }}" alt="Agrofarm">
+                    <img src="{{ \App\Support\EntityLetterhead::dataUri($pengajuan->entity, \App\Support\EntityLetterhead::LOGO) ?? asset('images/agrofarm-logo.png') }}" alt="Logo">
                 </td>
 
                 <td class="title">

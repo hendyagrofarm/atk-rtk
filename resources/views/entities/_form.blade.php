@@ -44,6 +44,29 @@
     </div>
 
     <div>
+        <label for="logo" class="mb-1 block text-[11px] font-semibold text-slate-700">
+            Logo untuk FPB (opsional)
+        </label>
+
+        <input type="file" id="logo" name="logo" accept="image/png,image/jpeg"
+               class="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs">
+        <p class="mt-1 text-[10px] text-slate-500">
+            Logo perusahaan (JPG/PNG, maks 2 MB) yang tampil di kiri atas FPB. Tanpa logo, FPB memakai logo Agrofarm bawaan.
+        </p>
+
+        @if (! empty($entity?->logo_path))
+            <p class="mt-1 text-[10px] font-semibold text-emerald-700">Logo sudah diunggah.</p>
+            <label class="mt-1 flex items-center gap-2 text-[10px] text-slate-600">
+                <input type="checkbox" name="remove_logo" value="1" class="rounded border-slate-300">
+                Hapus logo
+            </label>
+        @endif
+
+        @error('logo')
+            <p class="mt-1 text-[10px] text-red-600">{{ $message }}</p>
+        @enderror
+    </div>
+    <div>
         <label for="letterhead" class="mb-1 block text-[11px] font-semibold text-slate-700">
             Kop Surat untuk BAST (opsional)
         </label>

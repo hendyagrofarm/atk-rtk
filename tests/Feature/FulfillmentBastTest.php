@@ -378,4 +378,27 @@ class FulfillmentBastTest extends TestCase
 
         $this->assertNull($this->entity->fresh()->letterhead_path);
     }
+
+    public function test_logo_perusahaan_dipakai_pada_cetak_fpb(): void
+    {
+        $super = $this->makeUser('super_admin', 'Super Logo');
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+        $request = $this->disetujui();
+
+        $html = $this->actingAs($this->admin)->get(route('fpb.print', $request->id))->getContent();
+        $this->assertStringContainsString('images/agrofarm-logo.png', $html);
+
+        $this->actingAs($super)
+            ->put(route('entities.update', $this->entity), [
+                'code' => 'ANR',
+                'name' => 'PT Agrofarm Nusa Raya',
+                'is_active' => 1,
+                'logo' => \Illuminate\Http\UploadedFile::fake()->createWithContent('logo.png', $png),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $html = $this->actingAs($this->admin)->get(route('fpb.print', $request->id))->getContent();
+        $this->assertStringNotContainsString('images/agrofarm-logo.png', $html);
+        $this->assertStringContainsString('data:image/png;base64,', $html);
+    }
 }

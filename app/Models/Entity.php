@@ -15,6 +15,7 @@ class Entity extends Model
         'code',
         'name',
         'letterhead_path',
+        'logo_path',
         'is_active',
     ];
 

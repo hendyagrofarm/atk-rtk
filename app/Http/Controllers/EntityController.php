@@ -67,6 +67,7 @@ class EntityController extends Controller
                 'boolean',
             ],
             'letterhead' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
         ], [
             'code.required' => 'Kode entitas wajib diisi.',
             'code.alpha_dash' => 'Kode hanya boleh berisi huruf, angka, tanda hubung, dan garis bawah.',
@@ -74,6 +75,8 @@ class EntityController extends Controller
             'name.required' => 'Nama entitas wajib diisi.',
             'letterhead.image' => 'Kop surat harus berupa gambar JPG atau PNG.',
             'letterhead.max' => 'Ukuran kop surat maksimal 5 MB.',
+            'logo.image' => 'Logo harus berupa gambar JPG atau PNG.',
+            'logo.max' => 'Ukuran logo maksimal 2 MB.',
         ]);
 
         $entity = Entity::create([
@@ -84,6 +87,10 @@ class EntityController extends Controller
 
         if ($request->hasFile('letterhead')) {
             EntityLetterhead::store($entity, $request->file('letterhead'));
+        }
+
+        if ($request->hasFile('logo')) {
+            EntityLetterhead::store($entity, $request->file('logo'), EntityLetterhead::LOGO);
         }
 
         return redirect()
@@ -116,6 +123,7 @@ class EntityController extends Controller
                 'boolean',
             ],
             'letterhead' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
         ], [
             'code.required' => 'Kode entitas wajib diisi.',
             'code.alpha_dash' => 'Kode hanya boleh berisi huruf, angka, tanda hubung, dan garis bawah.',
@@ -123,6 +131,8 @@ class EntityController extends Controller
             'name.required' => 'Nama entitas wajib diisi.',
             'letterhead.image' => 'Kop surat harus berupa gambar JPG atau PNG.',
             'letterhead.max' => 'Ukuran kop surat maksimal 5 MB.',
+            'logo.image' => 'Logo harus berupa gambar JPG atau PNG.',
+            'logo.max' => 'Ukuran logo maksimal 2 MB.',
         ]);
 
         $entity->update([
@@ -135,6 +145,12 @@ class EntityController extends Controller
             EntityLetterhead::store($entity, $request->file('letterhead'));
         } elseif ($request->boolean('remove_letterhead')) {
             EntityLetterhead::delete($entity);
+        }
+
+        if ($request->hasFile('logo')) {
+            EntityLetterhead::store($entity, $request->file('logo'), EntityLetterhead::LOGO);
+        } elseif ($request->boolean('remove_logo')) {
+            EntityLetterhead::delete($entity, EntityLetterhead::LOGO);
         }
 
         return redirect()
