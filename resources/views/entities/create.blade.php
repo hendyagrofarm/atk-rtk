@@ -15,7 +15,7 @@
 
     <div class="mx-auto max-w-2xl">
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <form method="POST" action="{{ route('entities.store') }}">
+            <form method="POST" action="{{ route('entities.store') }}" enctype="multipart/form-data">
                 <div class="p-4">
                     @include('entities._form')
                 </div>

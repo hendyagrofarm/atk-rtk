@@ -11,20 +11,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class RequestFulfillment extends Model
 {
     public const PURCHASING = 'purchasing';
+    public const PAYMENT_REQUESTED = 'payment_requested';
     public const ORDERED = 'ordered';
     public const ARRIVED = 'arrived';
     public const HANDED_OVER = 'handed_over';
+    /** Tahap lama (konfirmasi penerima); tidak dipakai lagi, hanya untuk data historis. */
     public const RECEIVED = 'received';
 
     /**
-     * Urutan tahap (kunci => label).
+     * Urutan tahap (kunci => label). Serah terima (BAST) adalah tahap terakhir.
      */
     public const STAGES = [
         self::PURCHASING => 'Diproses pembelian',
+        self::PAYMENT_REQUESTED => 'Pembayaran diajukan ke Finance',
         self::ORDERED => 'Barang dipesan',
         self::ARRIVED => 'Barang tiba',
-        self::HANDED_OVER => 'Diserahkan ke penerima',
-        self::RECEIVED => 'Diterima pengguna',
+        self::HANDED_OVER => 'Diserahkan ke penerima (BAST)',
     ];
 
     protected $fillable = [
@@ -50,6 +52,6 @@ class RequestFulfillment extends Model
 
     public function getStageLabelAttribute(): string
     {
-        return self::STAGES[$this->stage] ?? $this->stage;
+        return self::STAGES[$this->stage] ?? ($this->stage === self::RECEIVED ? 'Diterima pengguna' : $this->stage);
     }
 }

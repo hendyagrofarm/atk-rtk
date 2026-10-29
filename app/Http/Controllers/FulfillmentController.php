@@ -9,11 +9,12 @@ use App\Support\RequestTimeline;
 use App\Support\SignatureStore;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
  * Pembelanjaan dan serah terima (BAST) pengajuan custom yang sudah disetujui.
- * Dikelola admin; penerima mengonfirmasi lewat halaman pengajuannya.
+ * Dikelola admin sampai BAST tercetak; penerima tidak perlu mengonfirmasi.
  */
 class FulfillmentController extends Controller
 {
@@ -32,16 +33,16 @@ class FulfillmentController extends Controller
                     ->whereIn('warehouse_id', $user->allowedWarehouseIds())
             );
 
-        $done = fn ($query) => $query->whereHas('fulfillments', fn ($f) => $f->where('stage', RequestFulfillment::RECEIVED));
+        $done = fn ($query) => $query->whereHas('fulfillments', fn ($f) => $f->where('stage', RequestFulfillment::HANDED_OVER));
 
         $counts = [
-            'proses' => (clone $base)->whereDoesntHave('fulfillments', fn ($f) => $f->where('stage', RequestFulfillment::RECEIVED))->count(),
+            'proses' => (clone $base)->whereDoesntHave('fulfillments', fn ($f) => $f->where('stage', RequestFulfillment::HANDED_OVER))->count(),
             'selesai' => $done(clone $base)->count(),
         ];
 
         $requests = ($tab === 'selesai'
             ? $done(clone $base)
-            : (clone $base)->whereDoesntHave('fulfillments', fn ($f) => $f->where('stage', RequestFulfillment::RECEIVED)))
+            : (clone $base)->whereDoesntHave('fulfillments', fn ($f) => $f->where('stage', RequestFulfillment::HANDED_OVER)))
             ->with(['user', 'entity', 'fulfillments', 'details'])
             ->latest('approved_at')
             ->paginate(15)
@@ -54,13 +55,14 @@ class FulfillmentController extends Controller
     {
         $this->authorizeAccess($pengajuan);
 
-        $pengajuan->load(['user.position', 'entity', 'warehouse', 'details', 'fulfillments.user', 'picUser']);
+        $pengajuan->load(['user.position', 'entity', 'warehouse', 'details', 'fulfillments.user', 'picUser.position']);
 
         return view('fulfillments.show', [
             'pengajuan' => $pengajuan,
             'events' => RequestTimeline::events($pengajuan),
             'nextStage' => Fulfillment::nextAdminStage($pengajuan),
             'adminHasSignature' => SignatureStore::userHasSignature(Auth::user()),
+            'form' => Fulfillment::formValues($pengajuan, Auth::user()),
         ]);
     }
 
@@ -70,13 +72,18 @@ class FulfillmentController extends Controller
 
         $stage = Fulfillment::nextAdminStage($pengajuan);
 
-        $data = $http->validate([
+        $rules = [
             'vendor' => ['nullable', 'string', 'max:150'],
             'po_number' => ['nullable', 'string', 'max:100'],
             'eta_date' => ['nullable', 'date'],
             'note' => ['nullable', 'string', 'max:1000'],
-            'received_name' => [$stage === RequestFulfillment::HANDED_OVER ? 'nullable' : 'prohibited', 'string', 'max:150'],
-        ]);
+        ];
+
+        if ($stage === RequestFulfillment::HANDED_OVER) {
+            $rules += Fulfillment::bastRules();
+        }
+
+        $data = $http->validate($rules);
 
         try {
             Fulfillment::advance($pengajuan, Auth::user(), $data);
@@ -86,36 +93,30 @@ class FulfillmentController extends Controller
 
         return redirect()
             ->route('fulfillments.show', $pengajuan)
-            ->with('success', 'Tahap pembelanjaan diperbarui.');
+            ->with('success', $stage === RequestFulfillment::HANDED_OVER
+                ? 'Serah terima dicatat. BAST siap dicetak.'
+                : 'Tahap pembelanjaan diperbarui.');
     }
 
     /**
-     * Admin mengonfirmasi penerimaan atas nama penerima yang tidak punya akun.
-     * Penerima berakun harus mengonfirmasi sendiri agar tanda tangannya sah.
+     * Perbarui isian formulir BAST setelah serah terima dicatat (mis. koreksi kode aset).
      */
-    public function receiveOnBehalf(HttpRequest $http, Pengajuan $pengajuan)
+    public function updateBast(HttpRequest $http, Pengajuan $pengajuan)
     {
         $this->authorizeAccess($pengajuan);
 
-        $pengajuan->load(['user', 'picUser']);
-
-        if ($pengajuan->receiverUser() !== null) {
-            return back()->with('error', 'Penerima punya akun dan harus mengonfirmasi sendiri.');
+        if (! Fulfillment::isComplete($pengajuan)) {
+            return back()->with('error', 'Data BAST dapat diperbarui setelah tahap serah terima dicatat.');
         }
 
-        $data = $http->validate(['note' => ['nullable', 'string', 'max:1000']]);
+        $data = $http->validate(Fulfillment::bastRules());
 
-        try {
-            Fulfillment::confirmReceipt($pengajuan, Auth::user(), $data['note'] ?? null);
-        } catch (RuntimeException $e) {
-            return back()->with('error', $e->getMessage());
-        }
+        DB::transaction(fn () => Fulfillment::saveBast($pengajuan, $data['bast'], $data['items']));
 
         return redirect()
             ->route('fulfillments.show', $pengajuan)
-            ->with('success', 'Penerimaan barang dikonfirmasi atas nama penerima.');
+            ->with('success', 'Data BAST diperbarui.');
     }
-
     private function authorizeAccess(Pengajuan $pengajuan): void
     {
         $user = Auth::user();

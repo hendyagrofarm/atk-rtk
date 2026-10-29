@@ -180,6 +180,7 @@ class UserController extends Controller
                 $user = User::create([
                     'name' => trim($validated['name']),
                     'email' => strtolower(trim($validated['email'])),
+                    'nik' => trim((string) ($validated['nik'] ?? '')) ?: null,
                     'role' => $validated['role'],
                     'entity_id' => $defaultEntityId,
                     'warehouse_id' => $defaultWarehouseId,
@@ -328,6 +329,7 @@ class UserController extends Controller
                 $data = [
                     'name' => trim($validated['name']),
                     'email' => strtolower(trim($validated['email'])),
+                    'nik' => trim((string) ($validated['nik'] ?? '')) ?: null,
                     'role' => $validated['role'],
                     'entity_id' => $defaultEntityId,
                     'warehouse_id' => $defaultWarehouseId,
@@ -516,6 +518,7 @@ class UserController extends Controller
                     'max:255',
                     Rule::unique('users', 'email')->ignore($user?->id),
                 ],
+                'nik' => ['nullable', 'string', 'max:30'],
                 'role' => ['required', Rule::in($this->availableRoles())],
                 'position_id' => [
                     'nullable',

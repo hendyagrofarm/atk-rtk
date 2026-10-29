@@ -27,6 +27,11 @@ class RequestDetail extends Model
         'estimated_price',
         'product_url',
         'note',
+        'bast_name',
+        'bast_specification',
+        'asset_code',
+        'bast_quantity',
+        'bast_condition',
     ];
 
     protected $casts = [

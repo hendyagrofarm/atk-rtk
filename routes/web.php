@@ -167,21 +167,8 @@ Route::middleware(['auth', 'verified', 'role:super_admin,admin'])->group(functio
         ->whereNumber('pengajuan')->name('fulfillments.show');
     Route::post('/fulfillments/{pengajuan}/advance', [FulfillmentController::class, 'advance'])
         ->whereNumber('pengajuan')->name('fulfillments.advance');
-    Route::post('/fulfillments/{pengajuan}/receive', [FulfillmentController::class, 'receiveOnBehalf'])
-        ->whereNumber('pengajuan')->name('fulfillments.receive');
-
-    /*
-    |--------------------------------------------------------------------------
-    | Pembelanjaan dan Serah Terima (BAST) pengajuan custom
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/fulfillments', [FulfillmentController::class, 'index'])->name('fulfillments.index');
-    Route::get('/fulfillments/{pengajuan}', [FulfillmentController::class, 'show'])
-        ->whereNumber('pengajuan')->name('fulfillments.show');
-    Route::post('/fulfillments/{pengajuan}/advance', [FulfillmentController::class, 'advance'])
-        ->whereNumber('pengajuan')->name('fulfillments.advance');
-    Route::post('/fulfillments/{pengajuan}/receive', [FulfillmentController::class, 'receiveOnBehalf'])
-        ->whereNumber('pengajuan')->name('fulfillments.receive');
+    Route::put('/fulfillments/{pengajuan}/bast', [FulfillmentController::class, 'updateBast'])
+        ->whereNumber('pengajuan')->name('fulfillments.bast.update');
 
     /*
     |--------------------------------------------------------------------------
@@ -301,19 +288,6 @@ Route::middleware(['auth', 'verified', 'role:staff,admin,super_admin'])
             ->whereNumber('id')
             ->name('requests.show');
 
-        Route::post(
-            '/requests/{id}/receive',
-            [StaffRequestController::class, 'receive']
-        )
-            ->whereNumber('id')
-            ->name('requests.receive');
-
-        Route::post(
-            '/requests/{id}/receive',
-            [StaffRequestController::class, 'receive']
-        )
-            ->whereNumber('id')
-            ->name('requests.receive');
     });
 
 /*

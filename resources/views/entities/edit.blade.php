@@ -15,7 +15,7 @@
 
     <div class="mx-auto max-w-2xl">
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <form method="POST" action="{{ route('entities.update', $entity) }}">
+            <form method="POST" action="{{ route('entities.update', $entity) }}" enctype="multipart/form-data">
                 @method('PUT')
 
                 <div class="p-4">

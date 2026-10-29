@@ -10,8 +10,7 @@
 
     @php
         $stageClass = fn ($stage) => match ($stage) {
-            'received' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-            'handed_over' => 'bg-sky-50 text-sky-700 ring-sky-200',
+            'received', 'handed_over' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
             null => 'bg-slate-50 text-slate-600 ring-slate-200',
             default => 'bg-amber-50 text-amber-700 ring-amber-200',
         };

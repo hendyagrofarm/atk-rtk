@@ -578,32 +578,9 @@ class RequestController extends Controller
             [
                 'request' => $request,
                 'events' => RequestTimeline::events($request),
-                'awaitingReceipt' => Fulfillment::isAwaitingReceipt($request)
-                    && $request->receiverUser()?->id === Auth::id(),
                 'fulfillmentComplete' => Fulfillment::isComplete($request),
-                'ownHasSignature' => SignatureStore::userHasSignature(Auth::user()),
             ]
         );
-    }
-
-    /**
-     * Penerima mengonfirmasi barang sudah diterima (tanda tangan digital pada BAST).
-     */
-    public function receive(Request $http, $id)
-    {
-        $request = Pengajuan::query()->mine(Auth::user())->findOrFail($id);
-
-        $data = $http->validate(['note' => ['nullable', 'string', 'max:1000']]);
-
-        try {
-            Fulfillment::confirmReceipt($request, Auth::user(), $data['note'] ?? null);
-        } catch (RuntimeException $e) {
-            return back()->with('receipt_error', $e->getMessage());
-        }
-
-        return redirect()
-            ->route('staff.requests.show', $request->id)
-            ->with('receipt_success', 'Terima kasih, penerimaan barang sudah dikonfirmasi.');
     }
 
     private function generateRequestNumber(): string

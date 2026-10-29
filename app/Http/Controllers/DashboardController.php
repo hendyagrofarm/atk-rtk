@@ -182,20 +182,7 @@ class DashboardController extends Controller
                 ->get();
         }
 
-        // Barang sudah diserahkan admin dan menunggu konfirmasi penerimaan dari user ini.
-        $awaitingReceipt = Pengajuan::query()
-            ->mine($user)
-            ->with(['user', 'picUser', 'details'])
-            ->where('request_type', 'custom')
-            ->where('status', 'approved')
-            ->whereHas('fulfillments', fn ($f) => $f->where('stage', 'handed_over'))
-            ->whereDoesntHave('fulfillments', fn ($f) => $f->where('stage', 'received'))
-            ->get()
-            ->filter(fn (Pengajuan $request) => $request->receiverUser()?->id === $user->id)
-            ->values();
-
         return view('dashboard-personal', [
-            'awaitingReceipt' => $awaitingReceipt,
             'user' => $user,
             'isApprover' => $isApprover,
             'ownCounts' => $ownCounts,

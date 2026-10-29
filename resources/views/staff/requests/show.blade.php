@@ -33,38 +33,6 @@
     @endphp
 
     <div class="space-y-3">
-        @if (session('receipt_success'))
-            <div class="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{{ session('receipt_success') }}</div>
-        @endif
-        @if (session('receipt_error'))
-            <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{{ session('receipt_error') }}</div>
-        @endif
-
-        @if ($awaitingReceipt)
-            <form method="POST" action="{{ route('staff.requests.receive', $request->id) }}"
-                  class="rounded-lg border border-sky-200 bg-sky-50 p-4 shadow-sm">
-                @csrf
-                <h2 class="text-xs font-semibold text-sky-900">Konfirmasi Barang Diterima</h2>
-                <p class="mt-1 text-[11px] text-sky-800">
-                    Admin sudah menyerahkan barang (No. BAST {{ $request->bast_number }}). Periksa barang, lalu konfirmasi.
-                    @if ($ownHasSignature)
-                        Tanda tangan digital Anda akan dicantumkan pada BAST.
-                    @else
-                        Anda belum punya tanda tangan digital; BAST akan memuat nama Anda dan dapat ditandatangani langsung.
-                    @endif
-                </p>
-
-                <input type="text" name="note" maxlength="1000" placeholder="Catatan penerimaan (opsional)"
-                       class="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-xs">
-
-                <button type="submit" class="mt-3 rounded-md bg-[#08B05A] px-4 py-2 text-[11px] font-bold text-white hover:bg-emerald-600"
-                        onclick="return confirm('Konfirmasi bahwa barang sudah Anda terima?')">
-                    Barang Sudah Saya Terima
-                </button>
-            </form>
-        @endif
-
-
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-4 py-3">
                 <div class="flex items-center justify-between">

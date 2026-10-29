@@ -64,14 +64,13 @@ class RequestTimeline
         if (Fulfillment::applies($request)) {
             $request->loadMissing('fulfillments');
             $last = $request->fulfillments->last();
+            $done = Fulfillment::isComplete($request);
 
             if ($last) {
                 return [
-                    'label' => $last->stage === RequestFulfillment::RECEIVED
-                        ? 'Barang sudah diterima pengguna'
-                        : $last->stage_label,
+                    'label' => $done ? 'Barang sudah diserahkan (BAST)' : $last->stage_label,
                     'time' => self::formatTime($last->happened_at),
-                    'state' => $last->stage === RequestFulfillment::RECEIVED ? 'done' : 'current',
+                    'state' => $done ? 'done' : 'current',
                 ];
             }
 
@@ -251,7 +250,7 @@ class RequestTimeline
 
         foreach ($request->fulfillments as $row) {
             $parts = [];
-            $parts[] = ($row->stage === RequestFulfillment::RECEIVED ? 'Dikonfirmasi oleh ' : 'Oleh ') . ($row->user?->name ?? '-');
+            $parts[] = 'Oleh ' . ($row->user?->name ?? '-');
 
             if ($row->vendor) {
                 $parts[] = 'Vendor: ' . $row->vendor;
@@ -278,17 +277,6 @@ class RequestTimeline
         }
 
         if (Fulfillment::isComplete($request)) {
-            return $events;
-        }
-
-        if (Fulfillment::isAwaitingReceipt($request)) {
-            $events[] = [
-                'state' => 'current',
-                'title' => 'Menunggu konfirmasi penerimaan',
-                'detail' => 'Menunggu ' . ($request->received_name ?: $request->receiverName() ?: 'penerima') . ' mengonfirmasi barang diterima',
-                'at' => null,
-            ];
-
             return $events;
         }
 

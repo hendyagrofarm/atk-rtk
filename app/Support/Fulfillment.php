@@ -12,9 +12,8 @@ use RuntimeException;
 /**
  * Tahap pembelanjaan pengajuan custom setelah FPB disetujui, sampai serah terima (BAST).
  *
- * Urutan tetap: diproses pembelian -> dipesan -> barang tiba -> diserahkan -> diterima.
- * Tahap tidak boleh dilompati. Tahap "diterima" dikonfirmasi oleh penerima
- * (atau admin atas nama penerima yang tidak punya akun).
+ * Urutan tetap: diproses pembelian -> pembayaran diajukan ke Finance -> dipesan -> barang tiba -> diserahkan (BAST).
+ * Tahap tidak boleh dilompati. Admin mencatat semua tahap; penerima tidak perlu mengonfirmasi.
  */
 class Fulfillment
 {
@@ -48,31 +47,28 @@ class Fulfillment
     }
 
     /**
-     * Tahap berikutnya yang boleh dicatat admin (tahap "diterima" bukan tugas admin).
+     * Tahap berikutnya yang dicatat admin; null bila serah terima (BAST) sudah selesai.
      */
     public static function nextAdminStage(Pengajuan $request): ?string
     {
         $keys = self::stageKeys();
         $current = self::currentStage($request);
-        $next = $current === null ? $keys[0] : ($keys[array_search($current, $keys, true) + 1] ?? null);
 
-        return ($next && $next !== RequestFulfillment::RECEIVED) ? $next : null;
+        return $current === null ? $keys[0] : ($keys[array_search($current, $keys, true) + 1] ?? null);
     }
 
+    /**
+     * Selesai bila barang sudah diserahkan dan BAST dicatat admin (tanpa konfirmasi penerima).
+     */
     public static function isComplete(Pengajuan $request): bool
-    {
-        return self::currentStage($request) === RequestFulfillment::RECEIVED;
-    }
-
-    public static function isAwaitingReceipt(Pengajuan $request): bool
     {
         return self::currentStage($request) === RequestFulfillment::HANDED_OVER;
     }
 
     /**
-     * Catat tahap berikutnya oleh admin.
+     * Catat tahap berikutnya oleh admin. Tahap serah terima wajib menyertakan data formulir BAST.
      *
-     * @param  array{vendor?: ?string, po_number?: ?string, eta_date?: ?string, note?: ?string, received_name?: ?string}  $data
+     * @param  array{vendor?: ?string, po_number?: ?string, eta_date?: ?string, note?: ?string, bast?: array, items?: array}  $data
      */
     public static function advance(Pengajuan $request, User $admin, array $data): RequestFulfillment
     {
@@ -86,11 +82,7 @@ class Fulfillment
             $stage = self::nextAdminStage($request);
 
             if ($stage === null) {
-                throw new RuntimeException(
-                    self::isAwaitingReceipt($request)
-                        ? 'Barang sudah diserahkan dan menunggu konfirmasi penerima.'
-                        : 'Seluruh tahap sudah selesai.'
-                );
+                throw new RuntimeException('Seluruh tahap sudah selesai. Data BAST masih bisa diperbarui.');
             }
 
             $row = RequestFulfillment::create([
@@ -109,10 +101,9 @@ class Fulfillment
                     'bast_number' => self::generateBastNumber(),
                     'bast_note' => self::clean($data['note'] ?? null),
                     'handed_over_by' => $admin->id,
-                    'received_name' => self::clean($data['received_name'] ?? null)
-                        ?: $request->receiverName(),
                 ])->save();
 
+                self::saveBast($request, $data['bast'] ?? [], $data['items'] ?? []);
                 self::snapshotHandedSignature($request, $admin);
             }
 
@@ -121,52 +112,111 @@ class Fulfillment
     }
 
     /**
-     * Konfirmasi barang diterima. Penerima berakun menandatangani digital; admin dapat
-     * mengonfirmasi atas nama penerima yang tidak berakun (tanpa tanda tangan digital).
+     * Simpan isian formulir BAST aset: pihak pertama/kedua, mengetahui, dan data tiap barang.
+     *
+     * @param  array<string, ?string>  $bast
+     * @param  array<int|string, array<string, mixed>>  $items  detail_id => isian barang
      */
-    public static function confirmReceipt(Pengajuan $request, User $actor, ?string $note = null): void
+    public static function saveBast(Pengajuan $request, array $bast, array $items): void
     {
-        DB::transaction(function () use ($request, $actor, $note) {
-            $request = Pengajuan::query()->lockForUpdate()->findOrFail($request->id);
+        $request->forceFill([
+            'bast_date' => ($bast['date'] ?? null) ?: now()->toDateString(),
+            'bast_place' => self::clean($bast['place'] ?? null),
+            'bast_first_name' => self::clean($bast['first_name'] ?? null),
+            'bast_first_nik' => self::clean($bast['first_nik'] ?? null),
+            'bast_first_position' => self::clean($bast['first_position'] ?? null),
+            'bast_second_name' => self::clean($bast['second_name'] ?? null),
+            'bast_second_nik' => self::clean($bast['second_nik'] ?? null),
+            'bast_second_position' => self::clean($bast['second_position'] ?? null),
+            'bast_known_name' => self::clean($bast['known_name'] ?? null),
+            'bast_known_position' => self::clean($bast['known_position'] ?? null),
+        ])->save();
 
-            if (! self::isAwaitingReceipt($request)) {
-                throw new RuntimeException('Barang belum diserahkan atau sudah dikonfirmasi.');
+        foreach ($request->details()->get() as $detail) {
+            $row = $items[$detail->id] ?? null;
+
+            if ($row === null) {
+                continue;
             }
 
-            $isReceiver = $request->receiverUser()?->id === $actor->id;
-            $isAdmin = in_array($actor->role, ['admin', 'super_admin'], true);
-
-            if (! $isReceiver && ! $isAdmin) {
-                throw new RuntimeException('Hanya penerima barang yang dapat mengonfirmasi penerimaan.');
-            }
-
-            $onBehalf = ! $isReceiver;
-
-            $request->forceFill([
-                'received_at' => now(),
-                'received_on_behalf' => $onBehalf,
-                'received_user_id' => $isReceiver ? $actor->id : null,
-                'received_name' => $request->received_name ?: ($isReceiver ? $actor->name : $request->receiverName()),
+            $detail->forceFill([
+                'bast_name' => self::clean($row['name'] ?? null),
+                'bast_specification' => self::clean($row['specification'] ?? null),
+                'asset_code' => self::clean($row['asset_code'] ?? null),
+                'bast_quantity' => isset($row['quantity']) && $row['quantity'] !== '' ? (int) $row['quantity'] : null,
+                'bast_condition' => self::clean($row['condition'] ?? null),
             ])->save();
+        }
+    }
+    /**
+     * Isian formulir BAST: data tersimpan, atau nilai awal dari admin (pihak pertama), PIC (pihak kedua)
+     * dan data barang pengajuan.
+     *
+     * @return array{bast: array<string, mixed>, items: array<int, array<string, mixed>>}
+     */
+    public static function formValues(Pengajuan $request, ?User $admin = null): array
+    {
+        $request->loadMissing(['details', 'picUser.position', 'user.position', 'handedOverBy.position']);
 
-            if ($isReceiver && SignatureStore::userHasSignature($actor)) {
-                $path = 'signatures/requests/' . $request->id . '-received.png';
-                Storage::disk(SignatureStore::DISK)->put($path, Storage::disk(SignatureStore::DISK)->get($actor->signature_path));
-                $request->forceFill(['received_signature_path' => $path])->save();
-            }
+        $first = $request->handedOverBy ?? $admin;
+        $second = $request->receiverUser();
 
-            RequestFulfillment::create([
-                'request_id' => $request->id,
-                'stage' => RequestFulfillment::RECEIVED,
-                'user_id' => $actor->id,
-                'note' => trim(
-                    ($onBehalf ? 'Dikonfirmasi admin atas nama penerima. ' : '') . (self::clean($note) ?? '')
-                ) ?: null,
-                'happened_at' => now(),
-            ]);
-        });
+        $bast = [
+            'date' => ($request->bast_date ?? now())->toDateString(),
+            'place' => $request->bast_place ?: 'Ponorogo',
+            'first_name' => $request->bast_first_name ?? $first?->name,
+            'first_nik' => $request->bast_first_nik ?? $first?->nik,
+            'first_position' => $request->bast_first_position ?? $first?->position?->name,
+            'second_name' => $request->bast_second_name ?? $request->receiverName(),
+            'second_nik' => $request->bast_second_nik ?? $second?->nik,
+            'second_position' => $request->bast_second_position
+                ?? ($second ? $second->position?->name : $request->pic_position),
+            'known_name' => $request->bast_known_name,
+            'known_position' => $request->bast_known_position,
+        ];
+
+        $items = [];
+
+        foreach ($request->details as $detail) {
+            $items[$detail->id] = [
+                'name' => $detail->bast_name ?? $detail->custom_item_name,
+                'specification' => $detail->bast_specification ?? $detail->specification ?? $detail->brand_type,
+                'asset_code' => $detail->asset_code,
+                'quantity' => $detail->bast_quantity ?? $detail->approved_quantity ?? $detail->quantity,
+                'condition' => $detail->bast_condition ?? 'Baik',
+            ];
+        }
+
+        return ['bast' => $bast, 'items' => $items];
     }
 
+    /**
+     * Aturan validasi isian formulir BAST (nama field: bast[...] dan items[detail_id][...]).
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function bastRules(): array
+    {
+        return [
+            'bast' => ['required', 'array'],
+            'bast.date' => ['required', 'date'],
+            'bast.place' => ['nullable', 'string', 'max:80'],
+            'bast.first_name' => ['required', 'string', 'max:150'],
+            'bast.first_nik' => ['nullable', 'string', 'max:30'],
+            'bast.first_position' => ['nullable', 'string', 'max:150'],
+            'bast.second_name' => ['required', 'string', 'max:150'],
+            'bast.second_nik' => ['nullable', 'string', 'max:30'],
+            'bast.second_position' => ['nullable', 'string', 'max:150'],
+            'bast.known_name' => ['nullable', 'string', 'max:150'],
+            'bast.known_position' => ['nullable', 'string', 'max:150'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.name' => ['required', 'string', 'max:255'],
+            'items.*.specification' => ['nullable', 'string', 'max:1000'],
+            'items.*.asset_code' => ['nullable', 'string', 'max:100'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'items.*.condition' => ['nullable', 'string', 'max:100'],
+        ];
+    }
     private static function snapshotHandedSignature(Pengajuan $request, User $admin): void
     {
         if (! SignatureStore::userHasSignature($admin)) {

@@ -54,6 +54,13 @@
                                placeholder="contoh@agrofarm.id">
                     </div>
 
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold text-slate-700">NIK</label>
+                        <input type="text" name="nik" value="{{ old('nik') }}" maxlength="30"
+                               class="block w-full rounded-md border-slate-300 px-3 py-2 text-xs"
+                               placeholder="Dipakai pada BAST aset">
+                    </div>
+
                     <div class="md:col-span-2">
                         <label class="mb-1 block text-[11px] font-semibold text-slate-700">Role *</label>
                         <select name="role" id="role" required

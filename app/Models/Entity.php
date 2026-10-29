@@ -14,6 +14,7 @@ class Entity extends Model
     protected $fillable = [
         'code',
         'name',
+        'letterhead_path',
         'is_active',
     ];
 

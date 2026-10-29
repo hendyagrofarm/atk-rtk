@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Entity;
+use App\Support\EntityLetterhead;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -65,18 +66,25 @@ class EntityController extends Controller
                 'nullable',
                 'boolean',
             ],
+            'letterhead' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
         ], [
             'code.required' => 'Kode entitas wajib diisi.',
             'code.alpha_dash' => 'Kode hanya boleh berisi huruf, angka, tanda hubung, dan garis bawah.',
             'code.unique' => 'Kode entitas sudah digunakan.',
             'name.required' => 'Nama entitas wajib diisi.',
+            'letterhead.image' => 'Kop surat harus berupa gambar JPG atau PNG.',
+            'letterhead.max' => 'Ukuran kop surat maksimal 5 MB.',
         ]);
 
-        Entity::create([
+        $entity = Entity::create([
             'code' => strtoupper($validated['code']),
             'name' => $validated['name'],
             'is_active' => $request->boolean('is_active'),
         ]);
+
+        if ($request->hasFile('letterhead')) {
+            EntityLetterhead::store($entity, $request->file('letterhead'));
+        }
 
         return redirect()
             ->route('entities.index')
@@ -107,11 +115,14 @@ class EntityController extends Controller
                 'nullable',
                 'boolean',
             ],
+            'letterhead' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
         ], [
             'code.required' => 'Kode entitas wajib diisi.',
             'code.alpha_dash' => 'Kode hanya boleh berisi huruf, angka, tanda hubung, dan garis bawah.',
             'code.unique' => 'Kode entitas sudah digunakan.',
             'name.required' => 'Nama entitas wajib diisi.',
+            'letterhead.image' => 'Kop surat harus berupa gambar JPG atau PNG.',
+            'letterhead.max' => 'Ukuran kop surat maksimal 5 MB.',
         ]);
 
         $entity->update([
@@ -119,6 +130,12 @@ class EntityController extends Controller
             'name' => $validated['name'],
             'is_active' => $request->boolean('is_active'),
         ]);
+
+        if ($request->hasFile('letterhead')) {
+            EntityLetterhead::store($entity, $request->file('letterhead'));
+        } elseif ($request->boolean('remove_letterhead')) {
+            EntityLetterhead::delete($entity);
+        }
 
         return redirect()
             ->route('entities.index')

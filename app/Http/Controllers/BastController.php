@@ -9,7 +9,7 @@ use App\Support\SignatureStore;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Cetak Berita Acara Serah Terima (BAST) setelah penerima mengonfirmasi barang diterima.
+ * Cetak Berita Acara Serah Terima Barang Inventaris (BAST) setelah admin mencatat serah terima.
  */
 class BastController extends Controller
 {
@@ -26,15 +26,21 @@ class BastController extends Controller
         if (! Fulfillment::isComplete($pengajuan)) {
             return redirect()
                 ->back(302, [], route('dashboard'))
-                ->with('error', 'BAST dapat dicetak setelah penerima mengonfirmasi barang diterima.');
+                ->with('error', 'BAST dapat dicetak setelah tahap serah terima dicatat admin.');
         }
+
+        $form = Fulfillment::formValues($pengajuan);
+        $handedBy = $pengajuan->handedOverBy;
+
+        // Tanda tangan digital hanya dicetak bila pihak pertama adalah admin yang menyerahkan.
+        $sameSigner = $handedBy
+            && mb_strtolower(trim((string) $form['bast']['first_name'])) === mb_strtolower(trim($handedBy->name));
 
         return view('bast.print', [
             'pengajuan' => $pengajuan,
-            'handedBy' => $pengajuan->handedOverBy,
-            'handedImage' => SignatureStore::dataUri($pengajuan->handed_signature_path),
-            'receivedImage' => SignatureStore::dataUri($pengajuan->received_signature_path),
-            'receivedFulfillment' => $pengajuan->fulfillments->firstWhere('stage', 'received'),
+            'bast' => $form['bast'],
+            'items' => $form['items'],
+            'handedImage' => $sameSigner ? SignatureStore::dataUri($pengajuan->handed_signature_path) : null,
         ]);
     }
 

@@ -78,23 +78,7 @@
             <span class="rounded-full bg-[#08B05A] px-2.5 py-1 text-[10px] font-bold text-white">{{ $roleLabel }}</span>
         </div>
 
-        {{-- Barang menunggu dikonfirmasi diterima --}}
-        @if ($awaitingReceipt->isNotEmpty())
-            <div class="rounded-md border border-sky-300 bg-sky-50 p-4 shadow-sm">
-                <p class="text-xs font-bold text-sky-900">Ada barang yang menunggu konfirmasi penerimaan Anda</p>
-                <ul class="mt-2 space-y-1">
-                    @foreach ($awaitingReceipt as $item)
-                        <li>
-                            <a href="{{ route('staff.requests.show', $item->id) }}" class="text-[12px] font-semibold text-[#2C87B8] hover:underline">
-                                {{ $item->request_number }} &middot; {{ $item->details->first()?->custom_item_name }}
-                                @if ($item->details->count() > 1) +{{ $item->details->count() - 1 }} lain @endif
-                                &rarr; Konfirmasi diterima
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
+
         {{-- Perlu tindakan --}}
         @if ($isApprover)
             <div class="rounded-md border {{ $awaiting->isNotEmpty() ? 'border-amber-300 bg-amber-50' : 'border-[#D9E1E7] bg-white' }} p-4 shadow-sm">

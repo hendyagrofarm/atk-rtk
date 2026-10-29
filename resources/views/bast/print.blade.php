@@ -6,53 +6,70 @@
     <title>BAST {{ $pengajuan->bast_number }}</title>
 
     <style>
-        @page { size: A4 portrait; margin: 12mm; }
+        @page { size: A4 portrait; margin: 14mm; }
         * { box-sizing: border-box; }
-        body { margin: 0; background: #e5e7eb; font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; }
-        .toolbar { display: flex; gap: 8px; justify-content: center; padding: 10px; background: #1f2937; }
+        body { margin: 0; background: #e5e7eb; font-family: "Times New Roman", Times, serif; font-size: 11pt; color: #111; }
+        .toolbar { display: flex; gap: 8px; justify-content: center; padding: 10px; background: #1f2937; font-family: Arial, sans-serif; }
         .toolbar button { padding: 6px 16px; border: 0; border-radius: 4px; background: #059669; color: #fff; font-size: 12px; font-weight: bold; cursor: pointer; }
         .toolbar .secondary { background: #4b5563; }
         .sheet { width: 186mm; margin: 10px auto; padding: 8mm; background: #fff; }
+        .sheet + .sheet { page-break-before: always; }
         table { width: 100%; border-collapse: collapse; }
-        .header td { vertical-align: middle; border: 1px solid #000; padding: 4px 8px; }
-        .header .logo { width: 50mm; text-align: center; }
-        .header .logo img { width: 42mm; height: auto; }
-        .header .title { text-align: center; font-weight: bold; }
-        .header .title .company { font-size: 11pt; }
-        .header .title .form-name { margin-top: 2px; font-size: 11pt; }
-        .intro { margin: 5mm 0 3mm; line-height: 1.5; font-size: 10pt; }
-        .info { margin-bottom: 3mm; font-size: 9.5pt; }
-        .info td { padding: 1.5px 4px; vertical-align: top; }
-        .info .key { width: 38mm; white-space: nowrap; }
-        .items th, .items td { border: 1px solid #000; padding: 3px 6px; vertical-align: top; font-size: 9pt; }
-        .items thead th { background: #e6edc9; text-align: center; }
+        .memo { text-align: center; }
+        .memo .small { font-size: 10pt; font-weight: bold; letter-spacing: 1px; }
+        .memo h1 { margin: 2mm 0 1mm; font-size: 13pt; text-decoration: underline; }
+        .memo .number { font-size: 11pt; }
+        .intro, .para { margin: 4mm 0 2mm; line-height: 1.5; text-align: justify; }
+        .party { margin: 2mm 0 2mm 8mm; }
+        .party td { padding: 0 3px; vertical-align: top; }
+        .party .key { width: 22mm; }
+        .party .sep { width: 3mm; }
+        .items { margin: 3mm 0; }
+        .items th, .items td { border: 1px solid #000; padding: 3px 6px; vertical-align: top; font-size: 10.5pt; }
+        .items thead th { text-align: center; }
         .items .center { text-align: center; }
-        .items .muted { display: block; color: #444; font-size: 8pt; }
-        .items .total td { font-weight: bold; background: #f6f8ea; }
-        .note { margin-top: 3mm; font-size: 9pt; }
-        .closing { margin: 4mm 0 2mm; font-size: 9.5pt; }
-        .signatures { margin-top: 3mm; page-break-inside: avoid; }
-        .signatures td { width: 50%; border: 1px solid #000; text-align: center; vertical-align: top; font-size: 9pt; }
-        .signatures .label { padding: 3px 4px; background: #e6edc9; font-weight: bold; }
-        .signatures .position { padding: 3px 4px; height: 8mm; border-top: 0; border-bottom: 0; font-size: 8.5pt; }
-        .signatures .space { height: 24mm; border-top: 0; border-bottom: 0; vertical-align: middle; }
-        .signatures .space img { display: block; max-width: 56mm; max-height: 22mm; margin: 0 auto; }
-        .signatures .person { padding: 3px 4px; height: 11mm; border-top: 0; font-weight: bold; }
-        .signatures .person small { display: block; margin-top: 1px; font-weight: normal; font-size: 8pt; }
-        .footnote { margin-top: 3mm; font-size: 8pt; color: #555; }
+        .items .pre { white-space: pre-line; }
+        .signatures { margin-top: 5mm; page-break-inside: avoid; }
+        .signatures td { width: 33.33%; text-align: center; vertical-align: top; }
+        .signatures .place { height: 6mm; font-size: 10.5pt; }
+        .signatures .space { height: 24mm; vertical-align: middle; }
+        .signatures .space img { display: block; max-width: 48mm; max-height: 22mm; margin: 0 auto; }
+        .signatures .name { font-weight: bold; text-decoration: underline; }
+        .sheet { position: relative; }
+        .kop { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        .sheet > *:not(.kop) { position: relative; z-index: 1; }
+        .sheet.has-kop { width: 210mm; min-height: 296mm; margin: 10px auto; padding: 42mm 20mm 40mm 26mm; }
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        @media print {
+            .sheet.has-kop { margin: 0; }
+        }
+        .footnote { margin-top: 3mm; font-size: 8pt; color: #555; font-family: Arial, sans-serif; }
+        .letter .meta td { padding: 1px 4px; vertical-align: top; }
+        .letter .meta .key { width: 28mm; }
+        .letter ol { margin: 2mm 0 2mm 6mm; padding-left: 5mm; line-height: 1.45; text-align: justify; }
+        .letter .line { display: inline-block; min-width: 70mm; border-bottom: 1px dotted #000; }
+        .letter .sign { margin: 4mm 0 0 auto; width: 70mm; text-align: center; }
+        .letter .sign .space { height: 22mm; }
         @media print {
             body { background: #fff; }
             .no-print { display: none !important; }
             .sheet { width: auto; margin: 0; padding: 0; }
         }
     </style>
+    @if ($pengajuan->entity?->letterhead_path)
+        <style>@page { size: A4 portrait; margin: 0; }</style>
+    @endif
 </head>
 <body>
     @php
-        $fmt = fn ($time) => $time ? $time->copy()->timezone(config('app.timezone'))->locale('id')->translatedFormat('d F Y') : '-';
-        $company = \Illuminate\Support\Str::upper($pengajuan->entity?->name ?? 'PT Agrofarm Nusa Raya');
-        $handedAt = $pengajuan->fulfillments->firstWhere('stage', 'handed_over')?->happened_at;
-        $receiverName = $pengajuan->received_name ?: $pengajuan->receiverName();
+        $id = fn ($date, $format) => $date ? $date->copy()->locale('id')->translatedFormat($format) : '';
+        $date = $pengajuan->bast_date ?? now();
+        $company = $pengajuan->entity?->name ?? 'PT. Agrofarm Nusa Raya';
+        $letterhead = \App\Support\EntityLetterhead::dataUri($pengajuan->entity);
+        $totalQty = collect($items)->sum(fn ($row) => (int) $row['quantity']);
+        $firstPosition = $bast['first_position'] ?: 'Pihak Pertama';
+        $secondName = $bast['second_name'] ?: '…………………';
+        $blank = '…………………';
     @endphp
 
     <div class="toolbar no-print">
@@ -60,115 +77,168 @@
         <button type="button" class="secondary" onclick="window.close()">Tutup</button>
     </div>
 
-    <div class="sheet">
-        <table class="header">
-            <tr>
-                <td class="logo"><img src="{{ asset('images/agrofarm-logo.png') }}" alt="Agrofarm"></td>
-                <td class="title">
-                    <div class="company">{{ $company }}</div>
-                    <div class="form-name">BERITA ACARA SERAH TERIMA BARANG (BAST)</div>
-                </td>
-            </tr>
-        </table>
+    {{-- Halaman 1: Berita Acara Serah Terima Barang Inventaris --}}
+    <div class="sheet {{ $letterhead ? 'has-kop' : '' }}">
+        @if ($letterhead)
+            <img class="kop" src="{{ $letterhead }}" alt="">
+        @endif
+
+        <div class="memo">
+            @unless ($letterhead)
+                <div class="small">{{ \Illuminate\Support\Str::upper($company) }}</div>
+            @endunless
+            <div class="small">INTERNAL MEMO</div>
+            <h1>BERITA ACARA SERAH TERIMA BARANG INVENTARIS</h1>
+            <div class="number">Nomor: {{ $pengajuan->bast_number }}</div>
+        </div>
 
         <p class="intro">
-            Pada hari ini, tanggal {{ $fmt($handedAt ?? $pengajuan->received_at) }}, telah dilakukan serah terima barang
-            hasil pengadaan sebagaimana pengajuan berikut:
+            Pada hari ini, {{ $id($date, 'l') }}, tanggal {{ $id($date, 'j') }} bulan {{ $id($date, 'F') }} tahun {{ $id($date, 'Y') }},
+            Kami yang bertanda-tangan di bawah ini:
         </p>
 
-        <table class="info">
-            <tr><td class="key">No. BAST</td><td>: {{ $pengajuan->bast_number }}</td></tr>
-            <tr><td class="key">Ref. No. Pengajuan (FPB)</td><td>: {{ $pengajuan->request_number }}</td></tr>
-            <tr><td class="key">Divisi/Departemen</td><td>: {{ $pengajuan->department ?: '-' }}</td></tr>
-            <tr><td class="key">Tanggal Serah Terima</td><td>: {{ $fmt($handedAt) }}</td></tr>
-            <tr><td class="key">Tanggal Diterima</td><td>: {{ $fmt($pengajuan->received_at) }}</td></tr>
+        <table class="party">
+            <tr><td class="key">Nama</td><td class="sep">:</td><td>{{ $bast['first_name'] }}</td></tr>
+            <tr><td class="key">NIK</td><td class="sep">:</td><td>{{ $bast['first_nik'] }}</td></tr>
+            <tr><td class="key">Jabatan</td><td class="sep">:</td><td>{{ $bast['first_position'] }}</td></tr>
+            <tr><td colspan="3">Selanjutnya disebut <strong>PIHAK PERTAMA</strong>.</td></tr>
         </table>
+
+        <table class="party">
+            <tr><td class="key">Nama</td><td class="sep">:</td><td>{{ $bast['second_name'] }}</td></tr>
+            <tr><td class="key">NIK</td><td class="sep">:</td><td>{{ $bast['second_nik'] }}</td></tr>
+            <tr><td class="key">Jabatan</td><td class="sep">:</td><td>{{ $bast['second_position'] }}</td></tr>
+            <tr><td colspan="3">Selanjutnya disebut <strong>PIHAK KEDUA</strong>.</td></tr>
+        </table>
+
+        <p class="para">
+            <strong>PIHAK PERTAMA</strong> atas nama {{ $firstPosition }} menyerahkan barang/peralatan penunjang yang siap dipakai
+            untuk keperluan pelaksanaan tugas-tugas di {{ $company }}, dengan rincian sebagai berikut:
+        </p>
 
         <table class="items">
             <thead>
                 <tr>
-                    <th style="width: 10mm;">No</th>
+                    <th style="width: 10mm;">No.</th>
                     <th>Nama Barang</th>
-                    <th style="width: 45mm;">Type / Merk</th>
+                    <th>Spesifikasi</th>
+                    <th style="width: 30mm;">Kode Asset</th>
                     <th style="width: 18mm;">Jumlah</th>
-                    <th style="width: 18mm;">Satuan</th>
-                    <th style="width: 40mm;">Keterangan</th>
+                    <th style="width: 24mm;">Kondisi</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($pengajuan->details as $detail)
+                    @php $row = $items[$detail->id]; @endphp
                     <tr>
                         <td class="center">{{ $loop->iteration }}</td>
-                        <td>{{ $detail->custom_item_name }}</td>
-                        <td>
-                            {{ $detail->brand_type }}
-                            @if ($detail->specification)
-                                <span class="muted">{{ \Illuminate\Support\Str::limit($detail->specification, 120) }}</span>
-                            @endif
-                        </td>
-                        <td class="center">{{ number_format($detail->approved_quantity ?? $detail->quantity, 0, ',', '.') }}</td>
-                        <td class="center">{{ $detail->unit }}</td>
-                        <td>{{ $detail->note }}</td>
+                        <td>{{ $row['name'] }}</td>
+                        <td class="pre">{{ $row['specification'] }}</td>
+                        <td>{{ $row['asset_code'] }}</td>
+                        <td class="center">{{ number_format((int) $row['quantity'], 0, ',', '.') }} {{ $detail->unit }}</td>
+                        <td>{{ $row['condition'] }}</td>
                     </tr>
                 @endforeach
-                <tr class="total">
-                    <td colspan="3" class="center">TOTAL</td>
-                    <td class="center">{{ number_format($pengajuan->details->sum(fn ($d) => $d->approved_quantity ?? $d->quantity), 0, ',', '.') }}</td>
-                    <td colspan="2"></td>
-                </tr>
             </tbody>
         </table>
 
-        @if ($pengajuan->bast_note)
-            <p class="note"><strong>Kondisi / catatan:</strong> {{ $pengajuan->bast_note }}</p>
-        @endif
+        <p class="para">
+            <strong>PIHAK KEDUA</strong> atas nama {{ $secondName }} menerima {{ $totalQty }} ({{ \App\Support\Terbilang::make($totalQty) }}) unit
+            barang/peralatan sebagai penunjang pelaksanaan tugas-tugas di {{ $company }} dengan merk, kondisi, dan kode aset tersebut
+            di atas dan <strong>PIHAK KEDUA</strong> wajib menggunakan, menjaga dan merawat dengan baik selama masa jabatan berlangsung
+            serta akan mengembalikannya setelah masa penggunaan berakhir kepada <strong>PIHAK PERTAMA</strong>.
+        </p>
 
-        <p class="closing">
-            Barang telah diterima dalam keadaan baik dan lengkap oleh pihak penerima, dan sejak tanggal serah terima
-            menjadi tanggung jawab penerima.
+        <p class="para">
+            Demikian Berita Acara Serah Terima Barang Inventaris Perusahaan ini dibuat untuk dipergunakan sebagaimana mestinya.
         </p>
 
         <table class="signatures">
             <tr>
-                <td class="label">Yang Menyerahkan</td>
-                <td class="label">Yang Menerima</td>
+                <td class="place"></td>
+                <td class="place"></td>
+                <td class="place">{{ $bast['place'] }}, {{ $id($date, 'j F Y') }}</td>
             </tr>
             <tr>
-                <td class="position">{{ $handedBy?->position?->name ?? 'Admin' }}</td>
-                <td class="position">{{ $pengajuan->pic_name ? ($pengajuan->pic_position ?? '') : ($pengajuan->user?->position?->name ?? '') }}</td>
+                <td>Yang Menyerahkan,<br><strong>PIHAK PERTAMA</strong></td>
+                <td>Mengetahui,</td>
+                <td>Yang Menerima,<br><strong>PIHAK KEDUA</strong></td>
             </tr>
             <tr>
                 <td class="space">
                     @if ($handedImage)
-                        <img src="{{ $handedImage }}" alt="Tanda tangan penyerah">
+                        <img src="{{ $handedImage }}" alt="Tanda tangan pihak pertama">
                     @endif
                 </td>
-                <td class="space">
-                    @if ($receivedImage)
-                        <img src="{{ $receivedImage }}" alt="Tanda tangan penerima">
-                    @endif
-                </td>
+                <td class="space"></td>
+                <td class="space"></td>
             </tr>
             <tr>
-                <td class="person">
-                    {{ $handedBy?->name }}
-                    <small>{{ $fmt($handedAt) }}</small>
+                <td><span class="name">{{ $bast['first_name'] }}</span><br>{{ $bast['first_position'] }}</td>
+                <td>
+                    @if ($bast['known_name'])
+                        <span class="name">{{ $bast['known_name'] }}</span><br>{{ $bast['known_position'] }}
+                    @endif
                 </td>
-                <td class="person">
-                    {{ $receiverName }}
-                    <small>
-                        {{ $fmt($pengajuan->received_at) }}
-                        @if ($pengajuan->received_on_behalf)
-                            &middot; dikonfirmasi admin atas nama penerima
-                        @endif
-                    </small>
-                </td>
+                <td><span class="name">{{ $bast['second_name'] }}</span><br>{{ $bast['second_position'] }}</td>
             </tr>
         </table>
 
         <p class="footnote no-print">
-            Tanda tangan digital dan tanggal tercetak otomatis dari konfirmasi di sistem. Kolom tanpa tanda tangan digital dapat ditandatangani langsung setelah dicetak.
+            Tanda tangan basah dibubuhkan setelah dicetak. Tanda tangan digital pihak pertama dicetak otomatis bila tersedia.
         </p>
+    </div>
+
+    {{-- Halaman 2: Surat Komitmen Pemeliharaan Fasilitas Kantor --}}
+    <div class="sheet letter {{ $letterhead ? 'has-kop' : '' }}">
+        @if ($letterhead)
+            <img class="kop" src="{{ $letterhead }}" alt="">
+        @endif
+
+        <table class="meta">
+            <tr><td class="key">Tanggal</td><td>: {{ $id($date, 'j F Y') }}</td></tr>
+            <tr><td class="key">Perihal</td><td>: <strong>Surat Komitmen Pemeliharaan Fasilitas Kantor</strong></td></tr>
+        </table>
+
+        <p class="para">Saya yang bertanda tangan di bawah ini:</p>
+
+        <table class="meta">
+            <tr><td class="key">Nama</td><td>: {{ $bast['second_name'] }}</td></tr>
+            <tr><td class="key">NIK</td><td>: {{ $bast['second_nik'] }}</td></tr>
+            <tr><td class="key">Alamat KTP</td><td>: <span class="line"></span></td></tr>
+            <tr><td></td><td>&nbsp;&nbsp;<span class="line"></span></td></tr>
+        </table>
+
+        <p class="para">
+            Dengan ini menyatakan bahwa saya berkomitmen untuk menjaga dan memelihara seluruh fasilitas kantor yang dipinjamkan
+            kepada saya. Adapun ketentuan-ketentuan yang saya wajib patuhi adalah sebagai berikut:
+        </p>
+
+        <ol>
+            <li>Menggunakan fasilitas kantor sesuai dengan peruntukannya dengan penuh tanggung jawab;</li>
+            <li>Memastikan fasilitas kantor tetap dalam kondisi baik dan melaporkan segera jika terdapat kerusakan atau kehilangan;</li>
+            <li>Tidak menyalahgunakan fasilitas kantor untuk kepentingan pribadi atau hal yang bertentangan dengan kebijakan perusahaan;</li>
+            <li>Bertanggung jawab atas segala bentuk kerusakan atau kehilangan yang disebabkan oleh kelalaian pengguna fasilitas kantor baik yang disebabkan kesengajaan maupun tidak disengaja;</li>
+            <li>Mengembalikan fasilitas kantor dalam kondisi semula, dalam keadaan baik, dan dapat didayagunakan apabila dialihkan kepada pengguna fasilitas kantor lain atau saya meninggalkan/mengundurkan diri dari perusahaan.</li>
+        </ol>
+
+        <p class="para">Apabila saya melanggar ketentuan di atas, saya bersedia menerima sanksi-sanksi berupa:</p>
+
+        <ol type="a">
+            <li>Teguran lisan atau tertulis, dan/atau</li>
+            <li>Penggantian fasilitas yang rusak atau hilang sesuai dengan nilai yang ditetapkan oleh perusahaan melalui mekanisme penggantian langsung atau potong gaji/hak yang seharusnya diberikan.</li>
+        </ol>
+
+        <p class="para">
+            Demikian surat komitmen ini saya buat dengan penuh kesadaran dan tanpa paksaan dari pihak manapun. Saya bersedia menerima
+            segala konsekuensi sesuai dengan ketentuan Peraturan Perusahaan dan ketentuan hukum apabila melanggar komitmen ini.
+        </p>
+
+        <div class="sign">
+            Hormat saya,
+            <div class="space"></div>
+            <span class="name" style="font-weight: bold; text-decoration: underline;">{{ $bast['second_name'] }}</span>
+        </div>
     </div>
 </body>
 </html>
